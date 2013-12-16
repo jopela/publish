@@ -5,6 +5,7 @@
 import argparse
 import os
 import cityinfo
+import cityres
 import json
 
 def main():
@@ -34,6 +35,16 @@ def main():
             default='result.json'
             )
 
+    default_endpoint = 'http://192.168.1.202:8890/sparql'
+    parser.add_argument(
+            '-e',
+            '--endpoint',
+            help='location of the SPARQL endpoint used for the publishing'\
+                    ' content gathering. Will default to the local mtrip'\
+                    ' virtuoso data store SPARQL endpoint.'\
+                    ' ({0}).'.format(default_endpoint),
+            default=default_endpoint)
+
     args = parser.parse_args()
 
     if args.display:
@@ -43,27 +54,31 @@ def main():
 
         exit(0)
 
-    searches = publish(args.path, args.guide_name)
+    searches = publish(args.path, args.guide_name, args.endpoint)
     for key in searches:
         print(key,":",searches[key])
 
     return
 
-def publish(path, guide_name):
+def publish(path, guide_name, endpoint):
     """
     Runs the publishing operation on the given directory path.
     """
 
     guides = list_guide(path,guide_name)
     # load the guide and invoke city info on all of them.
-    searchs = {}
+    searches= {}
     for guide in guides:
         with open(guide,'r') as g:
             jsonguide = json.load(g)
-            searchs[guide] = cityinfo.cityinfo(jsonguide)
+            searches[guide] = cityinfo.cityinfo(jsonguide)
 
     # for each of these searches string, get the uri associated
-    return searchs
+    uris = {}
+    for k,v in searches.items():
+        uris[k] = cityres.cityres(v,endpoint)
+
+    return uris
 
 def list_guide(path, guide_name):
     """
@@ -83,7 +98,7 @@ def list_guide(path, guide_name):
             os.path.isdir(os.path.join(path,d))]
 
     # get the result filename from the dir
-    guides = [guide_file(d,guide_name) for d in directories]
+    guides = [guide_file(d,guide_name) for d in directories if guide_file(d,guide_name)]
 
     return guides
 
