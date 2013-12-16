@@ -1,0 +1,92 @@
+[restaurants]
+	[1] => 168
+	Facebook: 31
+	[9] => 10
+	Facebook: 0
+	[8] => 8
+	Facebook: 0
+	[6] => 11
+	Facebook: 0
+	[3] => 16
+	Facebook: 0
+	[7] => 7
+	Facebook: 0
+	[2] => 1
+	Facebook: 0
+[drinking & nightlife]
+	[1] => 58
+	Facebook: 8
+	[6] => 27
+	Facebook: 0
+	[9] => 2
+	Facebook: 0
+	[8] => 3
+	Facebook: 0
+	[3] => 3
+	Facebook: 0
+	[7] => 1
+	Facebook: 0
+[shopping]
+	[1] => 71
+	Facebook: 3
+	[6] => 1
+	Facebook: 0
+	[3] => 1
+	Facebook: 0
+[café / desserts / cakes]
+	[8] => 3
+	Facebook: 0
+	[1] => 14
+	Facebook: 6
+	[3] => 8
+	Facebook: 0
+	[6] => 24
+	Facebook: 0
+	[7] => 5
+	Facebook: 0
+	[2] => 1
+	Facebook: 0
+	[9] => 1
+	Facebook: 0
+[attractions]
+	[1] => 145
+	Facebook: 0
+[entertainment]
+	[1] => 13
+	Facebook: 0
+	[8] => 1
+	Facebook: 0
+	[6] => 1
+	Facebook: 0
+
+Processing...
+===========================
+
+["restaurants", 20, 1000, 100]
+original size: 221
+kept: 202
+min: 145 max: 201 medium: 201
+----------
+["shopping", 20, 150, 50]
+original size: 73
+kept: 73
+min: 72 max: 85 medium: 85
+----------
+["drinking & nightlife", 30, 150, 30]
+original size: 94
+kept: 76
+min: 43 max: 75 medium: 75
+----------
+["café / desserts / cakes", 30, 150, 15]
+original size: 56
+kept: 22
+min: 21 max: 18 medium: 18
+----------
+["attractions", 15, 50000, 20]
+kept size: 145
+----------
+["entertainment", 30, 150, 50]
+original size: 15
+kept: 15
+min: 72 max: 16 medium: 16
+----------
