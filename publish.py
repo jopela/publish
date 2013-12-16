@@ -8,6 +8,9 @@ import cityinfo
 import cityres
 import json
 
+
+from progressbar import ProgressBar, AnimatedMarker, Percentage, ETA
+
 def main():
 
     parser = argparse.ArgumentParser(description="generate the editorial"\
@@ -68,17 +71,25 @@ def publish(path, guide_name, endpoint):
     guides = list_guide(path,guide_name)
     # load the guide and invoke city info on all of them.
     searches= {}
-    for guide in guides:
+    widgets = ['extracting city name and geoloc info from the guide: ',
+               AnimatedMarker(markers='◐◓◑◒'),
+               Percentage(),
+               ETA()]
+    pbar = ProgressBar(widgets=widgets,maxval=len(guides)).start()
+    for i, guide in enumerate(guides):
         with open(guide,'r') as g:
             jsonguide = json.load(g)
             searches[guide] = cityinfo.cityinfo(jsonguide)
 
-    # for each of these searches string, get the uri associated
-    uris = {}
-    for k,v in searches.items():
-        uris[k] = cityres.cityres(v,endpoint)
+        pbar.update(i+1)
 
-    return uris
+    print('city-name/geoloc extraction done')
+    # for each of these searches string, get the uri associated
+#    uris = {}
+#    for k,v in searches.items():
+#        uris[k] = cityres.cityres(v,endpoint)
+#
+    return searches
 
 def list_guide(path, guide_name):
     """
