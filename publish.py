@@ -83,13 +83,17 @@ def publish(path, guide_name, endpoint):
 
         pbar.update(i+1)
 
-    print('city-name/geoloc extraction done')
     # for each of these searches string, get the uri associated
-#    uris = {}
-#    for k,v in searches.items():
-#        uris[k] = cityres.cityres(v,endpoint)
-#
-    return searches
+    widgets[0] = "extracting resources from SPARQL endpoint:"
+    pbar = ProgressBar(widgets=widgets, maxval=len(searches)).start()
+    i = 0
+    uris = {}
+    for k,v in searches.items():
+        uris[k] = cityres.cityres(v,endpoint)
+        pbar.update(i+1)
+        i += 1
+
+    return uris
 
 def list_guide(path, guide_name):
     """
@@ -101,7 +105,6 @@ def list_guide(path, guide_name):
     >>> list_guide('./test')
 
     ['']
-
     """
 
     # list all directories in the path.
