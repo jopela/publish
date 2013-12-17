@@ -12,6 +12,7 @@ import requests
 
 from time import sleep
 from progressbar import ProgressBar, AnimatedMarker, Percentage, ETA
+from filecache import filecache
 
 def main():
 
@@ -128,7 +129,7 @@ def publish(path, guide_name, endpoint):
     valid_urls = {}
     for k,v in urls.items():
         valid_urls[k] = [url for url in v if url_resolvable(url)]
-        sleep(0.5)
+        sleep(0.3)
         pbar.update(i+1)
         i += 1
 
@@ -155,6 +156,7 @@ def list_guide(path, guide_name):
 
     return guides
 
+@filecache(None)
 def url_resolvable(url):
     """
     returns true if a request to that url returns an HTTP status code in the
