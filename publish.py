@@ -7,8 +7,9 @@ import os
 import cityinfo
 import cityres
 import json
+import urlinfer
 
-
+from time import sleep
 from progressbar import ProgressBar, AnimatedMarker, Percentage, ETA
 
 def main():
@@ -83,6 +84,8 @@ def publish(path, guide_name, endpoint):
 
         pbar.update(i+1)
 
+    print("")
+
     # for each of these searches string, get the uri associated
     widgets[0] = "extracting resources from SPARQL endpoint:"
     pbar = ProgressBar(widgets=widgets, maxval=len(searches)).start()
@@ -93,7 +96,33 @@ def publish(path, guide_name, endpoint):
         pbar.update(i+1)
         i += 1
 
-    return uris
+    print("")
+
+    def unquote(uri):
+        """
+        remove the " at each end of a string if present.
+        """
+        if len(uri) < 2:
+            return uri
+
+        if uri[0] == '"' and uri[-1] == '"':
+            return uri[1:-1]
+
+    # for each of these resources, get the wikipedia and the wikivoyage urls
+    widgets[0] = "infering the wikipedia and wikivoyage urls from resources"
+    pbar = ProgressBar(widgets=widgets, maxval=len(uris)).start()
+    i = 0
+    urls = {}
+    for k,v in uris.items():
+        # urlinferdef expects unquoted uri
+        urls[k] = urlinfer.urlinferdef([unquote(v)])
+        sleep(0.5)
+        pbar.update(i+1)
+        i += 1
+
+    # for each of the guide in the url, generate the editorial content
+
+    return urls
 
 def list_guide(path, guide_name):
     """
