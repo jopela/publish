@@ -8,6 +8,7 @@ import cityinfo
 import cityres
 import json
 import urlinfer
+import requests
 
 from time import sleep
 from progressbar import ProgressBar, AnimatedMarker, Percentage, ETA
@@ -120,9 +121,18 @@ def publish(path, guide_name, endpoint):
         pbar.update(i+1)
         i += 1
 
-    # for each of the guide in the url, generate the editorial content
+    # only keep urls that return 200 ok to a get requests.
+    widgets[0] = "selecting valid url for each destination"
+    pbar = ProgressBar(widgets=widgets, maxval=len(urls)).start()
+    i = 0
+    valid_urls = {}
+    for k,v in urls.items():
+        valid_urls[k] = [url for url in v if url_resolvable(url)]
+        sleep(0.5)
+        pbar.update(i+1)
+        i += 1
 
-    return urls
+    return valid_urls
 
 def list_guide(path, guide_name):
     """
@@ -144,6 +154,15 @@ def list_guide(path, guide_name):
     guides = [guide_file(d,guide_name) for d in directories if guide_file(d,guide_name)]
 
     return guides
+
+def url_resolvable(url):
+    """
+    returns true if a request to that url returns an HTTP status code in the
+    range 2xx.
+    """
+
+    r = requests.head(url)
+    return r.status_code == requests.codes.ok
 
 def guide_file(path,guide_name):
     """ Return the json filename guide found in path. None if it cannot be
