@@ -9,9 +9,7 @@ import requests
 import subprocess
 import logging
 
-from time import sleep
 from progressbar import ProgressBar, AnimatedMarker, Percentage, ETA
-from filecache import filecache
 
 def main():
 
@@ -69,6 +67,16 @@ def main():
             default = default_editorial_jar
             )
 
+    default_classpath = 'editorial.core'
+    parser.add_argument(
+            '-f',
+            '--function-class',
+            help='the classpath name that contains the main method that will'\
+                    ' be invoked by nailgun (e.g: myapp.core). Defaults to'\
+                    ' {0}.'.format(default_classpath),
+            default=default_classpath
+            )
+
     default_log_file = '/var/log/publish.py.log'
     parser.add_argument(
             '-l',
@@ -102,14 +110,12 @@ def main():
 
         exit(0)
 
-
     if args.version:
         print(current_version)
         exit(0)
 
-
     config_logger(args.log_file)
-    nailguninit(nailgun_bin)
+    nailguninit(args.nailgun_bin, args.content_generator)
 
     logging.info("editorial content publication started")
 
@@ -208,17 +214,17 @@ def editorial_content(urls):
     # start the nailgun thing if need be
     return
 
-def nailguninit(path):
+def nailguninit(path, content_generator):
     """
     takes care of starting the nailgun thing if not already started.
-    included for portability but nailgun should usually be started on the
-    mtrip datastore machine (192.168.1.202)
+    The function will set the correct nailgun class path to use the
+    editorial content generator specified by the user.
+    This is included for portability but nailgun should usually be started on
+    the mtrip datastore machine (192.168.1.202).
     """
 
-    # is nailgun started?
     res = subprocess.call("ng ng-version &> /dev/null", shell=True)
 
-    # start nailgun.
     if not res == 0:
         ng_shell_template = "java -jar {0} &> /dev/null &"
         ng_shell_instance = ng_shell_template.format(path)
@@ -228,7 +234,10 @@ def nailguninit(path):
                     'with {0} as the specified location. Is the'\
                     ' given path spelled correctly?')
             die('critical:could not init nailgun. see log file for detail')
-
+        else:
+            ng_cp_template = "ng ng-cp {0}"
+            ng_cp_instance = ng_cp_template.format(content_generator)
+            res = subprocess.call(ng_cp_instance, shell=True)
     return
 
 def die(msg, error_code=-1):
