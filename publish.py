@@ -8,6 +8,7 @@ import urlinfer
 import requests
 import subprocess
 import logging
+import sys
 
 from progressbar import ProgressBar, AnimatedMarker, Percentage, ETA
 
@@ -114,7 +115,7 @@ def main():
         print(current_version)
         exit(0)
 
-    config_logger(args.log_file)
+    config_logger(args.log_file, args.message_debug)
     nailguninit(args.nailgun_bin, args.content_generator)
 
     logging.info("editorial content publication started")
@@ -127,17 +128,18 @@ def main():
 
     return
 
-def config_logger(filename):
+def config_logger(filename, debug):
     """ apply the relevent logger configuration passed as command line
     argument by user."""
 
+    logging_level = logging.DEBUG if debug else logging.INFO
     logging.basicConfig(
             format='%(asctime)s %(module)s %(levelname)s %(message)s',
-            level=logging.INFO,
+            level=logging_level,
             filename=filename
             )
 
-    # disable requests logger.
+    # requests library is noisy so we diable it's logger.
     requests_log = logging.getLogger("requests")
     requests_log.setLevel(logging.WARNING)
 
@@ -203,7 +205,7 @@ def publish(path, guide_name, endpoint, nailgun_bin, log_file):
     if error:
         print('the software encountered errors during guide publication.'\
                 ' please see the log file ({0}) for more details'.format(
-                    logfile))
+                    log_file))
     return
 
 def editorial_content(urls):
@@ -211,7 +213,6 @@ def editorial_content(urls):
     from a collection of given url, generate some editorial content.
     """
 
-    # start the nailgun thing if need be
     return
 
 def nailguninit(path, content_generator):
@@ -233,11 +234,18 @@ def nailguninit(path, content_generator):
             logging.critical('could not start nailgun'\
                     'with {0} as the specified location. Is the'\
                     ' given path spelled correctly?')
-            die('critical:could not init nailgun. see log file for detail')
+            die('critical:could not init nailgun. See log file for detail')
         else:
             ng_cp_template = "ng ng-cp {0}"
             ng_cp_instance = ng_cp_template.format(content_generator)
             res = subprocess.call(ng_cp_instance, shell=True)
+            if not res == 0:
+                logging.critical(
+                        'could not add {0} to the nailgun classpath. Is the '\
+                        'path to the .jar correct?.'.format(content_generator))
+                die('critical:could not configure nailgun. See log file for'\
+                'detail')
+    logging.info('successfully started and configured nailgun')
     return
 
 def die(msg, error_code=-1):
