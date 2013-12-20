@@ -1,7 +1,4 @@
 #!/usr/bin/env python3
-
-# this is a weird python/shell script hybrid!
-
 import argparse
 import os
 import cityinfo
@@ -10,6 +7,7 @@ import json
 import urlinfer
 import requests
 import subprocess
+import logging
 
 from time import sleep
 from progressbar import ProgressBar, AnimatedMarker, Percentage, ETA
@@ -22,12 +20,13 @@ def main():
 
     parser.add_argument(
             'path',
-            help='root directory that contain all the guides'
+            help='root directory that contain all the guides',
+            nargs='?'
             )
 
     parser.add_argument(
             '-d',
-            '--display',
+            '--dump',
             help='dump the filenames of the guide found under path',
             action = 'store_true'
             )
@@ -70,6 +69,30 @@ def main():
             default = default_editorial_jar
             )
 
+    default_log_file = '/var/log/publish.py.log'
+    parser.add_argument(
+            '-l',
+            '--log-file',
+            help='path to the event log file. Defaults to {0}'.format(
+                default_log_file),
+            default = default_log_file
+            )
+
+    current_version = "0.1.1"
+    parser.add_argument(
+            '-v',
+            '--version',
+            help='prints the current version and quit',
+            action='store_true'
+            )
+
+    parser.add_argument(
+            '-m',
+            '--message-debug',
+            help='enable debug message to log file. Defaults to false',
+            action='store_true'
+            )
+
     args = parser.parse_args()
 
     if args.display:
@@ -79,6 +102,15 @@ def main():
 
         exit(0)
 
+
+    if args.version:
+        print(current_version)
+        exit(0)
+
+    config_logger(args.log_file)
+
+    logging.info("editorial content publication started")
+
     publish(args.path,
             args.guide_name,
             args.endpoint,
@@ -86,7 +118,19 @@ def main():
 
     return
 
-def publish(path, guide_name, endpoint, nailgun_bin):
+def config_logger(filename):
+    """ apply the relevent logger configuration passed as command line
+    argument by user."""
+
+    logging.basicConfig(
+            format='%(asctime)s %(processName)s %(levelname)s %(message)s',
+            level=logging.INFO,
+            filename=filename)
+            )
+
+    return
+
+def publish(path, guide_name, endpoint, nailgun_bin, logfile):
     """
     Runs the publishing operation on the given directory path.
     """
@@ -110,29 +154,26 @@ def publish(path, guide_name, endpoint, nailgun_bin):
                Percentage(),
                ETA()]
 
-    # init nailgun since it is needed for editorial content generation.
     nailguninit(nailgun_bin)
-
     pbar = ProgressBar(widgets=widgets,maxval=len(guides)).start()
-
-    published_guides = 0
-    dbpedialess = []
+    error = False
     for i, guide in enumerate(guides):
-        # query the wiki's in a polite manner
-        sleep(0.1)
         pbar.update(i)
         with open(guide,'r') as g:
             jsonguide = json.load(g)
-            # pull the search string.
             search = cityinfo.cityinfo(jsonguide)
-            # get the city res
             uri = cityres.cityres(search,endpoint)
             if not uri:
-                dbpedialess.append(guide)
+                logging.error(
+                        'no dbpedia resource was found for {0}'.format(guide))
+                error = True
                 continue
-            # get the wiki's addresses
             urls = urlinfer.urlinferdef([unquote(uri)])
-            published_guides += 1
+            if len(urls) < 1:
+                logging.error('no wikipedia/wikivoyage urls found/inferred'\
+                       'for resource {0}'.format(uri))
+                error = True
+
 
     ## for each of these resources, get the wikipedia and the wikivoyage urls
     #widgets[0] = "infering the wikipedia and wikivoyage urls from resources"
@@ -157,30 +198,11 @@ def publish(path, guide_name, endpoint, nailgun_bin):
     #    pbar.update(i+1)
     #    i += 1
 
-    publish_summary_template = """
-    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    ~                         publishing summary                              ~
-    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    number of entry guide:{0}
-    guides with dbpedia resources:{1}
-    guides with no dbpedia resources:
-    {2}
-    dbpedia resource hit rate:{3}
-    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    """
-
-    nbr_entry_guide = len(guides)
-    nbr_guide_content = published_guides
-    no_dbpedia = "\n".join(["-{0}".format(g) for g in dbpedialess]) if len(dbpedialess) > 1 else "none"
-    dbpedia_hit_rate = (nbr_entry_guide - len(dbpedialess))/(nbr_entry_guide)*100
-
-    publish_summary_instance = publish_summary_template.format(
-            nbr_entry_guide,
-            nbr_guide_content,
-            no_dbpedia,
-            dbpedia_hit_rate)
-
-    print(publish_summary_instance)
+    print('content publishing completed.')
+    if error:
+        print('the software encountered errors during guide publication.'\
+                ' please see the log file ({0}) for more details'.format(
+                    logfile))
     return
 
 def editorial_content(urls):
@@ -206,16 +228,20 @@ def nailguninit(path):
         ng_shell_template = "java -jar {0} &> /dev/null &"
         ng_shell_instance = ng_shell_template.format(path)
         res = subprocess.call(ng_shell_instance, shell=True)
-        print("started nailgun server")
-    else:
-        print("nailgun was already up and running")
+        if res not == 0:
+            logging.critical('could not start nailgun'\
+                    'with {0} as the specified location. Is the'\
+                    ' given path spelled correctly?')
+            die('critical:could not init nailgun. see log file for detail')
 
-    # relying on timing to make sure ng is started before using it.
-    # RELAX, it's ok to do this because ng with this, nailgun will be started
-    # before ussage with very high probability.
-    sleep(0.5)
-    print("nailgun ready")
     return
+
+def die(msg, error_code=-1):
+    """ print an error message on stderr and exit the program with a
+    non 0 error code. """
+
+    sys.stderr.write("{0}\n".format(msg))
+    exit(error_code)
 
 def list_guide(path, guide_name):
     """
