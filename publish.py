@@ -95,7 +95,7 @@ def main():
 
     args = parser.parse_args()
 
-    if args.display:
+    if args.dump:
         guides = list_guide(args.path,args.guide_name)
         for name in guides:
             print(name)
@@ -125,12 +125,16 @@ def config_logger(filename):
     logging.basicConfig(
             format='%(asctime)s %(processName)s %(levelname)s %(message)s',
             level=logging.INFO,
-            filename=filename)
+            filename=filename
             )
+
+    # disable requests logger.
+    requests_log = logging.getLogger("requests")
+    requests_log.setLevel(logging.WARNING)
 
     return
 
-def publish(path, guide_name, endpoint, nailgun_bin, logfile):
+def publish(path, guide_name, endpoint, nailgun_bin):
     """
     Runs the publishing operation on the given directory path.
     """
@@ -228,7 +232,7 @@ def nailguninit(path):
         ng_shell_template = "java -jar {0} &> /dev/null &"
         ng_shell_instance = ng_shell_template.format(path)
         res = subprocess.call(ng_shell_instance, shell=True)
-        if res not == 0:
+        if not res == 0:
             logging.critical('could not start nailgun'\
                     'with {0} as the specified location. Is the'\
                     ' given path spelled correctly?')
