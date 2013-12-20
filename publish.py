@@ -107,14 +107,17 @@ def main():
         print(current_version)
         exit(0)
 
+
     config_logger(args.log_file)
+    nailguninit(nailgun_bin)
 
     logging.info("editorial content publication started")
 
     publish(args.path,
             args.guide_name,
             args.endpoint,
-            args.nailgun_bin)
+            args.nailgun_bin,
+            args.log_file)
 
     return
 
@@ -123,7 +126,7 @@ def config_logger(filename):
     argument by user."""
 
     logging.basicConfig(
-            format='%(asctime)s %(processName)s %(levelname)s %(message)s',
+            format='%(asctime)s %(module)s %(levelname)s %(message)s',
             level=logging.INFO,
             filename=filename
             )
@@ -134,7 +137,7 @@ def config_logger(filename):
 
     return
 
-def publish(path, guide_name, endpoint, nailgun_bin):
+def publish(path, guide_name, endpoint, nailgun_bin, log_file):
     """
     Runs the publishing operation on the given directory path.
     """
@@ -158,11 +161,11 @@ def publish(path, guide_name, endpoint, nailgun_bin):
                Percentage(),
                ETA()]
 
-    nailguninit(nailgun_bin)
     pbar = ProgressBar(widgets=widgets,maxval=len(guides)).start()
+
     error = False
     for i, guide in enumerate(guides):
-        pbar.update(i)
+        pbar.update(i+1)
         with open(guide,'r') as g:
             jsonguide = json.load(g)
             search = cityinfo.cityinfo(jsonguide)
@@ -175,32 +178,20 @@ def publish(path, guide_name, endpoint, nailgun_bin):
             urls = urlinfer.urlinferdef([unquote(uri)])
             if len(urls) < 1:
                 logging.error('no wikipedia/wikivoyage urls found/inferred'\
-                       'for resource {0}'.format(uri))
+                       ' for resource {0}'.format(uri))
                 error = True
+                continue
+            content = editorial_content(urls)
+            if not content:
+                logging.error('no editorial content could be'\
+                        'generated for {0}'.format(guide))
+                continue
 
+            # use the jsonsert module to insert content into the guide.
+            # jsonsert.jsoninsert(guide,content)
+            logging.info('editorial content for {0} sucessfully'\
+                    'inserted.'.format(guide))
 
-    ## for each of these resources, get the wikipedia and the wikivoyage urls
-    #widgets[0] = "infering the wikipedia and wikivoyage urls from resources"
-    #pbar = ProgressBar(widgets=widgets, maxval=len(uris)).start()
-    #i = 0
-    #urls = {}
-    #for k,v in uris.items():
-    #    # urlinferdef expects unquoted uri
-    #    urls[k] = urlinfer.urlinferdef([unquote(v)])
-    #    sleep(0.5)
-    #    pbar.update(i+1)
-    #    i += 1
-
-    ## only keep urls that return 200 ok to a get requests.
-    #widgets[0] = "selecting valid url for each destination"
-    #pbar = ProgressBar(widgets=widgets, maxval=len(urls)).start()
-    #i = 0
-    #valid_urls = {}
-    #for k,v in urls.items():
-    #    valid_urls[k] = [url for url in v if url_resolvable(url)]
-    #    sleep(0.3)
-    #    pbar.update(i+1)
-    #    i += 1
 
     print('content publishing completed.')
     if error:
