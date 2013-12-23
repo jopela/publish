@@ -9,6 +9,7 @@ import requests
 import subprocess
 import logging
 import sys
+import jsonsert
 
 from progressbar import ProgressBar, AnimatedMarker, Percentage, ETA
 
@@ -102,13 +103,33 @@ def main():
             action='store_true'
             )
 
+    default_user_agent = 'publish v0.1.1 (jonathan.pelletier1@gmail.com)'
+    parser.add_argument(
+            '-u',
+            '--user-agent',
+            help='user agent string used for online content gathering.'\
+                    ' Defaults to {0}'.format(default_user_agent),
+            default = default_user_agent
+            )
+
+    parser.add_argument(
+            '-t',
+            '--test',
+            help='run the doctest suite and exit.',
+            action = 'store_true'
+            )
+
     args = parser.parse_args()
+
+    if args.test:
+        import doctest
+        doctest.testmod()
+        exit(0)
 
     if args.dump:
         guides = list_guide(args.path,args.guide_name)
         for name in guides:
             print(name)
-
         exit(0)
 
     if args.version:
@@ -124,7 +145,9 @@ def main():
             args.guide_name,
             args.endpoint,
             args.nailgun_bin,
-            args.log_file)
+            args.log_file,
+            args.function_class,
+            args.user_agent)
 
     return
 
@@ -133,19 +156,26 @@ def config_logger(filename, debug):
     argument by user."""
 
     logging_level = logging.DEBUG if debug else logging.INFO
+
     logging.basicConfig(
             format='%(asctime)s %(module)s %(levelname)s %(message)s',
             level=logging_level,
             filename=filename
             )
 
-    # requests library is noisy so we diable it's logger.
+    # requests library is noisy so we disable it's logger.
     requests_log = logging.getLogger("requests")
     requests_log.setLevel(logging.WARNING)
 
     return
 
-def publish(path, guide_name, endpoint, nailgun_bin, log_file):
+def publish(path,
+            guide_name,
+            endpoint,
+            nailgun_bin,
+            log_file,
+            function_class,
+            user_agent):
     """
     Runs the publishing operation on the given directory path.
     """
@@ -173,33 +203,38 @@ def publish(path, guide_name, endpoint, nailgun_bin, log_file):
 
     error = False
     for i, guide in enumerate(guides):
-        pbar.update(i+1)
+        jsonguide = None
         with open(guide,'r') as g:
             jsonguide = json.load(g)
-            search = cityinfo.cityinfo(jsonguide)
-            uri = cityres.cityres(search,endpoint)
-            if not uri:
-                logging.error(
-                        'no dbpedia resource was found for {0}'.format(guide))
-                error = True
-                continue
-            urls = urlinfer.urlinferdef([unquote(uri)])
-            if len(urls) < 1:
-                logging.error('no wikipedia/wikivoyage urls found/inferred'\
-                       ' for resource {0}'.format(uri))
-                error = True
-                continue
-            content = editorial_content(urls)
-            if not content:
-                logging.error('no editorial content could be'\
-                        'generated for {0}'.format(guide))
-                continue
 
-            # use the jsonsert module to insert content into the guide.
-            # jsonsert.jsoninsert(guide,content)
-            logging.info('editorial content for {0} sucessfully'\
-                    'inserted.'.format(guide))
+        if not jsonguide:
+            logging.error('could not load json from {0}'.format())
+            continue
+        search = cityinfo.cityinfo(jsonguide)
+        uri = cityres.cityres(search,endpoint)
+        if not uri:
+            logging.error(
+                    'no dbpedia resource was found for {0}'.format(guide))
+            error = True
+            continue
+        urls = urlinfer.urlinferdef([unquote(uri)])
+        if len(urls) < 1:
+            logging.error('no wikipedia/wikivoyage urls found/inferred'\
+                   ' for resource {0}'.format(uri))
+            error = True
+            continue
+        content = editorial_content(urls,function_class,user_agent)
+        if not content:
+            logging.error('no editorial content could be'\
+                    'generated for {0}'.format(guide))
+            continue
 
+        # insert the content into the guide
+        jsonsert.jsonsert(content, guide)
+
+        logging.info('editorial content for {0} sucessfully'\
+                'inserted.'.format(guide))
+        pbar.update(i+1)
 
     print('content publishing completed.')
     if error:
@@ -208,12 +243,51 @@ def publish(path, guide_name, endpoint, nailgun_bin, log_file):
                     log_file))
     return
 
-def editorial_content(urls):
+def editorial_content(urls, class_path, user_agent):
     """
     from a collection of given url, generate some editorial content.
     """
+    quoted_urls = quote_urls(urls)
+    urls_args = " ".join(quoted_urls)
+    ed_gen_template = 'ng {0} -u "{1}" {2}'
+    ed_gen_instance = ed_gen_template.format(class_path, user_agent, urls_args)
 
-    return
+    content = subprocess.check_output(ed_gen_instance, shell=True,
+            universal_newlines=True)
+
+    return content
+
+def quote_urls(urls):
+    """
+    takes a list of url string and quote them, if need be, for usage inside
+    a shell invocation string"
+
+
+    EXAMPLE
+    =======
+
+    # non quoted urls are quoted
+    >>> quote_urls(['http://en.wikipedia.org', 'http://ru.wiki.ru/stuff'])
+    ['"http://en.wikipedia.org"', '"http://ru.wiki.ru/stuff"']
+
+    # already quoted urls are left untouched.
+    >>> quote_urls(['"http://exp.com"', 'http://google.com'])
+    ['"http://exp.com"', '"http://google.com"']
+
+    # aplication on empty list is idempotent
+    >>> quote_urls([])
+    []
+
+    """
+    def is_quoted(url):
+        """ return true if a url is quoted, false otherwise."""
+        return len(url) > 1 and url[0] == '"' and url[-1] == '"'
+
+    def wrap(s,sym):
+        """ returns a string wrapped with sym """
+        return '{0}{1}{0}'.format(sym,s)
+
+    return [u if is_quoted(u) else wrap(u,'"') for u in urls]
 
 def nailguninit(path, content_generator):
     """
@@ -235,16 +309,17 @@ def nailguninit(path, content_generator):
                     'with {0} as the specified location. Is the'\
                     ' given path spelled correctly?')
             die('critical:could not init nailgun. See log file for detail')
-        else:
-            ng_cp_template = "ng ng-cp {0}"
-            ng_cp_instance = ng_cp_template.format(content_generator)
-            res = subprocess.call(ng_cp_instance, shell=True)
-            if not res == 0:
-                logging.critical(
-                        'could not add {0} to the nailgun classpath. Is the '\
-                        'path to the .jar correct?.'.format(content_generator))
-                die('critical:could not configure nailgun. See log file for'\
-                'detail')
+
+    ng_cp_template = "ng ng-cp {0}"
+    ng_cp_instance = ng_cp_template.format(content_generator)
+    res = subprocess.call(ng_cp_instance, shell=True)
+    if not res == 0:
+        logging.critical(
+                'could not add {0} to the nailgun classpath. Is the '\
+                'path to the .jar correct?.'.format(content_generator))
+        die('critical:could not configure nailgun. See log file for'\
+        'detail')
+
     logging.info('successfully started and configured nailgun')
     return
 
@@ -259,12 +334,6 @@ def list_guide(path, guide_name):
     """
     returns a list of all the mtrip guide files that can be found under
 
-    EXAMPLE
-    =======
-
-    >>> list_guide('./test')
-
-    ['']
     """
 
     # list all directories in the path.
