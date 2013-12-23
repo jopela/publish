@@ -223,14 +223,14 @@ def publish(path,
                    ' for resource {0}'.format(uri))
             error = True
             continue
-        content = editorial_content(urls,function_class,user_agent)
-        if not content:
-            logging.error('no editorial content could be'\
-                    'generated for {0}'.format(guide))
-            continue
+        #content = editorial_content(urls,function_class,user_agent)
+        #if not content:
+        #    logging.error('no editorial content could be'\
+        #            'generated for {0}'.format(guide))
+        #    continue
 
         # insert the content into the guide
-        jsonsert.jsonsert(content, guide)
+        #jsonsert.jsonsert(content, guide)
 
         logging.info('editorial content for {0} sucessfully'\
                 ' inserted.'.format(guide))
