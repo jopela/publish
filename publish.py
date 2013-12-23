@@ -233,7 +233,7 @@ def publish(path,
         jsonsert.jsonsert(content, guide)
 
         logging.info('editorial content for {0} sucessfully'\
-                'inserted.'.format(guide))
+                ' inserted.'.format(guide))
         pbar.update(i+1)
 
     print('content publishing completed.')
