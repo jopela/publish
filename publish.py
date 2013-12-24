@@ -60,7 +60,7 @@ def main():
             default = default_nailgun_bin
             )
 
-    default_editorial_jar = '/usr/share/java/editorial-0.1.1-standalone.jar'
+    default_editorial_jar = '/root/dev/editorial/target/editorial-0.1.1-standalone.jar'
     parser.add_argument(
             '-c',
             '--content-generator',
@@ -223,14 +223,14 @@ def publish(path,
                    ' for resource {0}'.format(uri))
             error = True
             continue
-        #content = editorial_content(urls,function_class,user_agent)
-        #if not content:
-        #    logging.error('no editorial content could be'\
-        #            'generated for {0}'.format(guide))
-        #    continue
+        content = editorial_content(urls,function_class,user_agent)
+        if not content:
+            logging.error('no editorial content could be'\
+                    ' generated for {0}'.format(guide))
+            continue
 
-        # insert the content into the guide
-        #jsonsert.jsonsert(content, guide)
+        #insert the content into the guide
+        jsonsert.jsonsert(content, guide)
 
         logging.info('editorial content for {0} sucessfully'\
                 ' inserted.'.format(guide))
