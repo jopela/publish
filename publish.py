@@ -70,14 +70,34 @@ def main():
             default = default_editorial_jar
             )
 
+    default_wikison_jar = '/root/dev/wikison/target/wikison-0.1.1-standalone.jar'
+    parser.add_argument(
+            '-D',
+            '--description-gen',
+            help='the path to the .jar for the description content generator'\
+                    ' Defaults to {0}'.format(default_wikison_jar),
+            default=default_wikison_jar
+            )
+
     default_classpath = 'editorial.core'
     parser.add_argument(
             '-f',
             '--function-class',
             help='the classpath name that contains the main method that will'\
-                    ' be invoked by nailgun (e.g: myapp.core). Defaults to'\
+                    ' be invoked by nailgun when generating ed contant (e.g: myapp.core). Defaults to'\
                     ' {0}.'.format(default_classpath),
             default=default_classpath
+            )
+
+    default_description_classpath = 'wikison.core'
+    parser.add_argument(
+            '-F',
+            '--function-description-class',
+            help='the classpath name that contains the main method that will'\
+                    ' be invoked by nailgun when generating description'\
+                    ' contant (e.g: myapp.core). Defaults to'\
+                    ' {0}.'.format(default_classpath),
+            default=default_description_classpath
             )
 
     default_log_file = '/var/log/publish.py.log'
@@ -155,11 +175,11 @@ def main():
             args.guide_name,
             args.endpoint,
             args.function_class,
+            args.function_description_class,
             args.user_agent,
             args.publish_functions)
 
     return
-
 
 
 def config_logger(filename, debug):
@@ -183,6 +203,7 @@ def config_logger(filename, debug):
 def publish(path,
             guide_name,
             endpoint,
+            function_description_class,
             function_class,
             user_agent,
             publish_functions):
@@ -208,13 +229,79 @@ def publish(path,
                     log_file))
     return
 
-def description_publish():
+def description_publish(guides, user_agent, function_class):
     """
     publish the description content for the guides.
     """
 
+    sources_domain = {'wikipedia','wikivoyage'}
     error = False
+    for g in guides:
+        jsonguide = None
+        with open(g,'r') as guide:
+            jsonguide = json.load(guide)
+
+        if not jsonguide:
+            logging.error('could not load json from {0}'.format(g))
+            error = True
+            continue
+
+        pois = jsonduide['Cities'][0]['pois']
+        widgets = ['extracting description for the poi(s) in'\
+                ' {0}:'.format(g),
+                   AnimatedMarker(markers='◢◣◤◥'),
+                   Percentage(),
+                   ETA()]
+
+        pbar = ProgressBar(widgets=widgets,maxval=len(pois)).start()
+        for i,p in enumerate(pois):
+            desc = p['descriptions']
+            for k, v in desc.items():
+                url = v['source']['source']['url']
+                hostname = urlparse(url).hostname
+                if hostname:
+                    tldn = hostname.split('.')[-2]
+                else:
+                    continue
+                if tldn in sources_domain:
+                    content_raw = description_content(
+                            [url],
+                            function_class,
+                            user_agent)
+                    c_list = json.loads(content_raw)
+                    content = c_list[0] if len(c_list) > 0 else None
+                    if not content:
+                        poi_name = p['name']['name']
+                        logging.error(
+                                'failed to generate descriptive content'\
+                                ' for {0} using url {1}'.format(poi_name,
+                                    url))
+                        error = True
+                    else:
+                        v['text'] = content
+
+            pbar.update(i+1)
+
+        # redump the guide into the file
+        pbar.finish()
+        with open(g,'w') as guide:
+            json.dump(jsonguide, guide)
+
     return error
+
+def description_content(urls,class_path, user_agent):
+    """
+    generate the description content from a url.
+    """
+    quoted_urls = quote_urls(urls)
+    urls_args = " ".join(quoted_urls)
+    ed_gen_template = 'ng {0} -u "{1}" -m  {2}'
+    ed_gen_instance = ed_gen_template.format(class_path, user_agent, urls_args)
+
+    content = subprocess.check_output(ed_gen_instance, shell=True,
+            universal_newlines=True)
+
+    return content
 
 def editorial_publish(guides, endpoint, function_class, user_agent):
     """
@@ -247,6 +334,7 @@ def editorial_publish(guides, endpoint, function_class, user_agent):
 
         if not jsonguide:
             logging.error('could not load json from {0}'.format())
+            error = True
             continue
         search = cityinfo.cityinfo(jsonguide)
         uri = cityres.cityres(search,endpoint)
@@ -265,9 +353,11 @@ def editorial_publish(guides, endpoint, function_class, user_agent):
         if not content:
             logging.error('no editorial content could be'\
                     ' generated for {0}'.format(guide))
+            error = True
             continue
 
         #insert the content into the guide
+        print(content)
         jsonsert.jsonsert(content, guide)
 
         logging.info('editorial content for {0} sucessfully'\
@@ -275,6 +365,7 @@ def editorial_publish(guides, endpoint, function_class, user_agent):
         pbar.update(i+1)
 
     return error
+
 
 def editorial_content(urls, class_path, user_agent):
     """
