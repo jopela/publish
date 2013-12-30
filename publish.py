@@ -11,6 +11,9 @@ import logging
 import sys
 import jsonsert
 
+#TODO: fix the problem with the class path being wikison.core instead of
+# editorial.core
+
 from progressbar import ProgressBar, AnimatedMarker, Percentage, ETA
 from time import sleep
 
@@ -96,7 +99,7 @@ def main():
             help='the classpath name that contains the main method that will'\
                     ' be invoked by nailgun when generating description'\
                     ' contant (e.g: myapp.core). Defaults to'\
-                    ' {0}.'.format(default_classpath),
+                    ' {0}.'.format(default_description_classpath),
             default=default_description_classpath
             )
 
@@ -203,8 +206,8 @@ def config_logger(filename, debug):
 def publish(path,
             guide_name,
             endpoint,
-            function_description_class,
             function_class,
+            function_description_class,
             user_agent,
             publish_functions):
     """
@@ -357,7 +360,6 @@ def editorial_publish(guides, endpoint, function_class, user_agent):
             continue
 
         #insert the content into the guide
-        print(content)
         jsonsert.jsonsert(content, guide)
 
         logging.info('editorial content for {0} sucessfully'\
