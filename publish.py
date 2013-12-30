@@ -12,6 +12,7 @@ import sys
 import jsonsert
 
 from progressbar import ProgressBar, AnimatedMarker, Percentage, ETA
+from time import sleep
 
 def main():
 
@@ -119,6 +120,17 @@ def main():
             action = 'store_true'
             )
 
+    publish_choices = ('description','editorial')
+    parser.add_argument(
+            '-p',
+            '--publish-functions',
+            help='the set of publish operation to perform. '\
+                    'Defaults to {0}'.format(publish_choices[-1]),
+            nargs='+',
+            default=[publish_choices[-1]]
+            )
+
+
     args = parser.parse_args()
 
     if args.test:
@@ -139,17 +151,16 @@ def main():
     config_logger(args.log_file, args.message_debug)
     nailguninit(args.nailgun_bin, args.content_generator)
 
-    logging.info("editorial content publication started")
-
     publish(args.path,
             args.guide_name,
             args.endpoint,
-            args.nailgun_bin,
-            args.log_file,
             args.function_class,
-            args.user_agent)
+            args.user_agent,
+            args.publish_functions)
 
     return
+
+
 
 def config_logger(filename, debug):
     """ apply the relevent logger configuration passed as command line
@@ -172,16 +183,43 @@ def config_logger(filename, debug):
 def publish(path,
             guide_name,
             endpoint,
-            nailgun_bin,
-            log_file,
             function_class,
-            user_agent):
+            user_agent,
+            publish_functions):
     """
     Runs the publishing operation on the given directory path.
     """
 
     guides = list_guide(path,guide_name)
 
+    error = False
+    if 'editorial' in publish_functions:
+        logging.info('starting editorial content generation')
+        error |= editorial_publish(guides, endpoint, function_class, user_agent)
+
+    if 'description' in publish_functions:
+        logging.info('starting description content generation')
+        error |= description_publish()
+
+    print('publishing operation completed.')
+    if error:
+        print('the software encountered errors during guide publication.'\
+                ' please see the log file ({0}) for more details'.format(
+                    log_file))
+    return
+
+def description_publish():
+    """
+    publish the description content for the guides.
+    """
+
+    error = False
+    return error
+
+def editorial_publish(guides, endpoint, function_class, user_agent):
+    """
+    takes care of publishing the editorial content for the guides.
+    """
     # helper function used during editorial content generation.
     def unquote(uri):
         """
@@ -236,12 +274,7 @@ def publish(path,
                 ' inserted.'.format(guide))
         pbar.update(i+1)
 
-    print('content publishing completed.')
-    if error:
-        print('the software encountered errors during guide publication.'\
-                ' please see the log file ({0}) for more details'.format(
-                    log_file))
-    return
+    return error
 
 def editorial_content(urls, class_path, user_agent):
     """
@@ -310,6 +343,9 @@ def nailguninit(path, content_generator):
                     ' given path spelled correctly?')
             die('critical:could not init nailgun. See log file for detail')
 
+    # to make sure that nailgun is properly started before adding the
+    # classpath
+    sleep(1)
     ng_cp_template = "ng ng-cp {0}"
     ng_cp_instance = ng_cp_template.format(content_generator)
     res = subprocess.call(ng_cp_instance, shell=True)
