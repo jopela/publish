@@ -172,7 +172,8 @@ def main():
         exit(0)
 
     config_logger(args.log_file, args.message_debug)
-    nailguninit(args.nailgun_bin, args.content_generator)
+    nailguninit(args.nailgun_bin, [args.content_generator,
+                                   args.description_gen])
 
     publish(args.path,
             args.guide_name,
@@ -415,7 +416,7 @@ def quote_urls(urls):
 
     return [u if is_quoted(u) else wrap(u,'"') for u in urls]
 
-def nailguninit(path, content_generator):
+def nailguninit(path, generators):
     """
     takes care of starting the nailgun thing if not already started.
     The function will set the correct nailgun class path to use the
@@ -439,15 +440,17 @@ def nailguninit(path, content_generator):
     # to make sure that nailgun is properly started before adding the
     # classpath
     sleep(1)
-    ng_cp_template = "ng ng-cp {0}"
-    ng_cp_instance = ng_cp_template.format(content_generator)
-    res = subprocess.call(ng_cp_instance, shell=True)
-    if not res == 0:
-        logging.critical(
-                'could not add {0} to the nailgun classpath. Is the '\
-                'path to the .jar correct?.'.format(content_generator))
-        die('critical:could not configure nailgun. See log file for'\
-        'detail')
+
+    for cp in generators:
+        ng_cp_template = "ng ng-cp {0}"
+        ng_cp_instance = ng_cp_template.format(cp)
+        res = subprocess.call(ng_cp_instance, shell=True)
+        if not res == 0:
+            logging.critical(
+                    'could not add {0} to the nailgun classpath. Is the '\
+                    'path to the .jar correct?.'.format(content_generator))
+            die('critical:could not configure nailgun. See log file for'\
+            'detail')
 
     logging.info('successfully started and configured nailgun')
     return
