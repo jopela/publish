@@ -16,6 +16,7 @@ import jsonsert
 
 from progressbar import ProgressBar, AnimatedMarker, Percentage, ETA
 from time import sleep
+from urllib.parse import urlparse
 
 def main():
 
@@ -172,8 +173,7 @@ def main():
         exit(0)
 
     config_logger(args.log_file, args.message_debug)
-    nailguninit(args.nailgun_bin, [args.content_generator,
-                                   args.description_gen])
+    nailguninit(args.nailgun_bin, [args.content_generator, args.description_gen])
 
     publish(args.path,
             args.guide_name,
@@ -181,10 +181,13 @@ def main():
             args.function_class,
             args.function_description_class,
             args.user_agent,
-            args.publish_functions)
+            args.publish_functions,
+            args.log_file,
+            args.nailgun_bin,
+            args.content_generator,
+            args.description_gen)
 
     return
-
 
 def config_logger(filename, debug):
     """ apply the relevent logger configuration passed as command line
@@ -210,7 +213,11 @@ def publish(path,
             function_class,
             function_description_class,
             user_agent,
-            publish_functions):
+            publish_functions,
+            log_file,
+            nailgun_bin,
+            content_generator,
+            description_gen):
     """
     Runs the publishing operation on the given directory path.
     """
@@ -220,24 +227,41 @@ def publish(path,
     error = False
     if 'editorial' in publish_functions:
         logging.info('starting editorial content generation')
-        error |= editorial_publish(guides, endpoint, function_class, user_agent)
+        error |= editorial_publish(guides,
+                                   endpoint,
+                                   function_class,
+                                   user_agent,
+                                   nailgun_bin,
+                                   content_generator)
 
     if 'description' in publish_functions:
         logging.info('starting description content generation')
-        error |= description_publish()
+        error |= description_publish(guides,
+                                     user_agent,
+                                     function_description_class,
+                                     nailgun_bin,
+                                     description_gen)
 
     print('publishing operation completed.')
     if error:
         print('the software encountered errors during guide publication.'\
                 ' please see the log file ({0}) for more details'.format(
                     log_file))
+
+    nailgunstop()
     return
 
-def description_publish(guides, user_agent, function_class):
+def description_publish(guides,
+                        user_agent,
+                        function_class,
+                        nailgun_bin,
+                        description_gen):
     """
-    publish the description content for the guides.
+    Publish the description content for the guides.
     """
 
+    # start the nailgun thing for usage with decription_generation.
+    nailguninit(nailgun_bin, description_gen)
     sources_domain = {'wikipedia','wikivoyage'}
     error = False
     for g in guides:
@@ -250,7 +274,7 @@ def description_publish(guides, user_agent, function_class):
             error = True
             continue
 
-        pois = jsonduide['Cities'][0]['pois']
+        pois = jsonguide['Cities'][0]['pois']
         widgets = ['extracting description for the poi(s) in'\
                 ' {0}:'.format(g),
                    AnimatedMarker(markers='◢◣◤◥'),
@@ -261,7 +285,12 @@ def description_publish(guides, user_agent, function_class):
         for i,p in enumerate(pois):
             desc = p['descriptions']
             for k, v in desc.items():
-                url = v['source']['source']['url']
+                try:
+                    url = v['source'].get('url')
+                except:
+                    logging.error("source did not contain a dictionary"\
+                            " for {0}".format(p['name']['name']))
+                    continue
                 hostname = urlparse(url).hostname
                 if hostname:
                     tldn = hostname.split('.')[-2]
@@ -307,10 +336,19 @@ def description_content(urls,class_path, user_agent):
 
     return content
 
-def editorial_publish(guides, endpoint, function_class, user_agent):
+def editorial_publish(guides,
+                      endpoint,
+                      function_class,
+                      user_agent,
+                      nailgun_bin,
+                      content_generator):
     """
     takes care of publishing the editorial content for the guides.
     """
+
+    # init the nailgun thing for ed content generation.
+    nailguninit(nailgun_bin,content_generator)
+
     # helper function used during editorial content generation.
     def unquote(uri):
         """
@@ -416,7 +454,7 @@ def quote_urls(urls):
 
     return [u if is_quoted(u) else wrap(u,'"') for u in urls]
 
-def nailguninit(path, generators):
+def nailguninit(path, generator):
     """
     takes care of starting the nailgun thing if not already started.
     The function will set the correct nailgun class path to use the
@@ -425,34 +463,49 @@ def nailguninit(path, generators):
     the mtrip datastore machine (192.168.1.202).
     """
 
-    res = subprocess.call("ng ng-version &> /dev/null", shell=True)
+    # This way of doing things completely sucks. No other idea to get around
+    # the prohibitive startup cost of the JVM. Port to clojureScript?
+    # But then, once it's started the process is a long running one and
+    # will benefit the performance and thoughness of the real JVM. What do?
+    # sticking with nailgun and stupid shell invocation for now.
 
+    subprocess.call("ng ng-stop", shell=True)
+
+    sleep(0.2)
+    ng_shell_template = "java -jar {0} &> /dev/null &"
+    ng_shell_instance = ng_shell_template.format(path)
+    res = subprocess.call(ng_shell_instance, shell=True)
     if not res == 0:
-        ng_shell_template = "java -jar {0} &> /dev/null &"
-        ng_shell_instance = ng_shell_template.format(path)
-        res = subprocess.call(ng_shell_instance, shell=True)
-        if not res == 0:
-            logging.critical('could not start nailgun'\
-                    'with {0} as the specified location. Is the'\
-                    ' given path spelled correctly?')
-            die('critical:could not init nailgun. See log file for detail')
+        logging.critical('could not start nailgun'\
+                'with {0} as the specified location. Is the'\
+                ' given path spelled correctly?')
+        die('critical:could not init nailgun. See log file for detail')
+
 
     # to make sure that nailgun is properly started before adding the
     # classpath
-    sleep(1)
+    sleep(0.2)
 
-    for cp in generators:
-        ng_cp_template = "ng ng-cp {0}"
-        ng_cp_instance = ng_cp_template.format(cp)
-        res = subprocess.call(ng_cp_instance, shell=True)
-        if not res == 0:
-            logging.critical(
-                    'could not add {0} to the nailgun classpath. Is the '\
-                    'path to the .jar correct?.'.format(content_generator))
-            die('critical:could not configure nailgun. See log file for'\
-            'detail')
+    ng_cp_template = "ng ng-cp {0}"
+    ng_cp_instance = ng_cp_template.format(generator)
+    res = subprocess.call(ng_cp_instance, shell=True)
+    if not res == 0:
+        logging.critical(
+                'could not add {0} to the nailgun classpath. Is the '\
+                'path to the .jar correct?.'.format(content_generator))
+        die('critical:could not configure nailgun. See log file for'\
+        'detail')
 
     logging.info('successfully started and configured nailgun')
+    sleep(0.2)
+    return
+
+def nailgunstop():
+    """
+    shutdown nailgun .
+    """
+
+    subprocess.call("ng ng-stop", shell=True)
     return
 
 def die(msg, error_code=-1):
