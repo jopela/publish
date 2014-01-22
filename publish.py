@@ -10,9 +10,7 @@ import subprocess
 import logging
 import sys
 import jsonsert
-
-#TODO: fix the problem with the class path being wikison.core instead of
-# editorial.core
+import zipclean
 
 from progressbar import ProgressBar, AnimatedMarker, Percentage, ETA
 from time import sleep
@@ -144,16 +142,15 @@ def main():
             action = 'store_true'
             )
 
-    publish_choices = ('description','editorial')
+    publish_choices = ('description','editorial','zipcode-remove')
     parser.add_argument(
             '-p',
             '--publish-functions',
             help='the set of publish operation to perform. '\
-                    'Defaults to {0}'.format(publish_choices[-1]),
+                    'Defaults to {0}'.format(publish_choices),
             nargs='+',
-            default=[publish_choices[-1]]
+            default=publish_choices
             )
-
 
     args = parser.parse_args()
 
@@ -173,7 +170,6 @@ def main():
         exit(0)
 
     config_logger(args.log_file, args.message_debug)
-    nailguninit(args.nailgun_bin, [args.content_generator, args.description_gen])
 
     publish(args.path,
             args.guide_name,
@@ -242,6 +238,12 @@ def publish(path,
                                      nailgun_bin,
                                      description_gen)
 
+    if 'zipcode-remove' in publish_functions:
+        logging.info('starting zipcode cleanup')
+        error |= zipclean.zipclean(path, guide_name)
+
+
+
     print('publishing operation completed.')
     if error:
         print('the software encountered errors during guide publication.'\
@@ -273,6 +275,10 @@ def description_publish(guides,
             logging.error('could not load json from {0}'.format(g))
             error = True
             continue
+
+        # TODO: for the moment, there is ALWAYS only one city inside a guide.
+        # should we modify this code so that operations can be performed
+        # when we have many cities? dont know yet.
 
         pois = jsonguide['Cities'][0]['pois']
         widgets = ['extracting description for the poi(s) in'\
@@ -320,6 +326,7 @@ def description_publish(guides,
         with open(g,'w') as guide:
             json.dump(jsonguide, guide)
 
+    logging.info('description content succesfully inserted in all guides')
     return error
 
 def description_content(urls,class_path, user_agent):
@@ -454,24 +461,19 @@ def quote_urls(urls):
 
     return [u if is_quoted(u) else wrap(u,'"') for u in urls]
 
-def nailguninit(path, generator):
+def nailguninit(path, jar):
     """
     takes care of starting the nailgun thing if not already started.
     The function will set the correct nailgun class path to use the
-    editorial content generator specified by the user.
+    editorial content jar specified by the user.
     This is included for portability but nailgun should usually be started on
     the mtrip datastore machine (192.168.1.202).
     """
 
-    # This way of doing things completely sucks. No other idea to get around
-    # the prohibitive startup cost of the JVM. Port to clojureScript?
-    # But then, once it's started the process is a long running one and
-    # will benefit the performance and thoughness of the real JVM. What do?
-    # sticking with nailgun and stupid shell invocation for now.
+    print("starting nailgun ...")
+    subprocess.call("ng ng-stop &> /dev/null", shell=True)
 
-    subprocess.call("ng ng-stop", shell=True)
-
-    sleep(0.2)
+    sleep(2)
     ng_shell_template = "java -jar {0} &> /dev/null &"
     ng_shell_instance = ng_shell_template.format(path)
     res = subprocess.call(ng_shell_instance, shell=True)
@@ -481,23 +483,23 @@ def nailguninit(path, generator):
                 ' given path spelled correctly?')
         die('critical:could not init nailgun. See log file for detail')
 
-
     # to make sure that nailgun is properly started before adding the
     # classpath
-    sleep(0.2)
+    print("adding classpath to nailgun")
+    sleep(2)
 
-    ng_cp_template = "ng ng-cp {0}"
-    ng_cp_instance = ng_cp_template.format(generator)
+    ng_cp_template = "ng ng-cp {0} &> /dev/null"
+    ng_cp_instance = ng_cp_template.format(jar )
     res = subprocess.call(ng_cp_instance, shell=True)
     if not res == 0:
         logging.critical(
                 'could not add {0} to the nailgun classpath. Is the '\
-                'path to the .jar correct?.'.format(content_generator))
+                'path to the .jar correct?.'.format(jar))
         die('critical:could not configure nailgun. See log file for'\
         'detail')
 
     logging.info('successfully started and configured nailgun')
-    sleep(0.2)
+    sleep(1)
     return
 
 def nailgunstop():
@@ -505,12 +507,12 @@ def nailgunstop():
     shutdown nailgun .
     """
 
-    subprocess.call("ng ng-stop", shell=True)
+    subprocess.call("ng ng-stop &> /dev/null", shell=True)
     return
 
 def die(msg, error_code=-1):
     """ print an error message on stderr and exit the program with a
-    non 0 error code. """
+    non 0 error code. Default error code is -1"""
 
     sys.stderr.write("{0}\n".format(msg))
     exit(error_code)
@@ -518,7 +520,7 @@ def die(msg, error_code=-1):
 def list_guide(path, guide_name):
     """
     returns a list of all the mtrip guide files that can be found under
-
+    path.
     """
 
     # list all directories in the path.
@@ -530,7 +532,6 @@ def list_guide(path, guide_name):
         guide_name)]
 
     return guides
-
 
 def guide_file(path,guide_name):
     """ Return the json filename guide found in path. None if it cannot be
