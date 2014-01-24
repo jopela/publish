@@ -219,16 +219,7 @@ def publish(path,
     """
 
     guides = list_guide(path,guide_name)
-
     error = False
-    if 'editorial' in publish_functions:
-        logging.info('starting editorial content generation')
-        error |= editorial_publish(guides,
-                                   endpoint,
-                                   function_class,
-                                   user_agent,
-                                   nailgun_bin,
-                                   content_generator)
 
     if 'description' in publish_functions:
         logging.info('starting description content generation')
@@ -243,6 +234,14 @@ def publish(path,
         error |= zipclean.zipclean(path, guide_name)
 
 
+    if 'editorial' in publish_functions:
+        logging.info('starting editorial content generation')
+        error |= editorial_publish(guides,
+                                   endpoint,
+                                   function_class,
+                                   user_agent,
+                                   nailgun_bin,
+                                   content_generator)
 
     print('publishing operation completed.')
     if error:
