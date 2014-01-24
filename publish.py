@@ -261,7 +261,6 @@ def description_publish(guides,
     """
     Publish the description content for the guides.
     """
-
     # start the nailgun thing for usage with decription_generation.
     nailguninit(nailgun_bin, description_gen)
     sources_domain = {'wikipedia','wikivoyage'}
@@ -276,10 +275,8 @@ def description_publish(guides,
             error = True
             continue
 
-        # TODO: for the moment, there is ALWAYS only one city inside a guide.
-        # should we modify this code so that operations can be performed
-        # when we have many cities? dont know yet.
-
+        # notice the 0 index here. This is ok because there is only one city
+        # per guide. Maybe that will not be the case in the future.
         pois = jsonguide['Cities'][0]['pois']
         widgets = ['extracting description for the poi(s) in'\
                 ' {0}:'.format(g),
