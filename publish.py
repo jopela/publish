@@ -283,7 +283,7 @@ def description_publish(guides,
                    Percentage(),
                    ETA()]
 
-        pbar = ProgressBar(widgets=widgets,maxval=len(pois)).start()
+        pbar = ProgressBar(widgets=widgets,maxval=len(pois)+1).start()
         for i,p in enumerate(pois):
             desc = p['descriptions']
             for k, v in desc.items():
@@ -369,7 +369,7 @@ def editorial_publish(guides,
                Percentage(),
                ETA()]
 
-    pbar = ProgressBar(widgets=widgets,maxval=len(guides)).start()
+    pbar = ProgressBar(widgets=widgets,maxval=len(guides)+1).start()
 
     error = False
     for i, guide in enumerate(guides):
