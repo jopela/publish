@@ -11,6 +11,7 @@ import logging
 import sys
 import jsonsert
 import zipclean
+import collections
 
 from progressbar import ProgressBar, AnimatedMarker, Percentage, ETA
 from time import sleep
@@ -142,7 +143,7 @@ def main():
             action = 'store_true'
             )
 
-    publish_choices = ('description','editorial','zipcode-remove')
+    publish_choices = ('description','editorial','zipcode-remove','banner')
     parser.add_argument(
             '-p',
             '--publish-functions',
@@ -229,9 +230,19 @@ def publish(path,
                                      nailgun_bin,
                                      description_gen)
 
+    if 'banner' in publish_functions:
+        logging.info('starting banner fetching for the guides')
+        error |= banner(guides,
+                        endpoint,
+                        function_description_class,
+                        user_agent,
+                        nailgun_bin,
+                        description_gen)
+
     if 'zipcode-remove' in publish_functions:
         logging.info('starting zipcode cleanup')
         error |= zipclean.zipclean(path, guide_name)
+
 
 
     if 'editorial' in publish_functions:
@@ -243,14 +254,211 @@ def publish(path,
                                    nailgun_bin,
                                    content_generator)
 
-    print('publishing operation completed.')
     if error:
         print('the software encountered errors during guide publication.'\
                 ' please see the log file ({0}) for more details'.format(
                     log_file))
 
+
     nailgunstop()
     return
+
+def banner(guides,
+           endpoint,
+           function_description_class,
+           user_agent,
+           nailgun_bin,
+           description_gen):
+    """
+    Insert a banner picture into a guide and download it on the file system.
+    """
+
+    nailguninit(nailgun_bin, description_gen)
+
+    widgets = ['fetching the depiction banner for the guides',
+               AnimatedMarker(markers='◢◣◤◥'),
+               Percentage(),
+               ETA()]
+
+    error = False
+    pbar = ProgressBar(widgets=widgets,maxval=len(guides)+1).start()
+
+    for i, g in enumerate(guides):
+        url = depiction_url(g, user_agent, function_description_class,
+                endpoint)
+        if url:
+            guide_folder = os.path.dirname(g)
+            filename = url_filename(url)
+            error = download(guide_folder, filename, url)
+            error |= zip_insert(guide_folder, filename)
+            error |= remove_banner(guide_folder, filename)
+            if error:
+                logging.error('could not download/insert/remove {0}. There '\
+                        'will be no banner for {1}'.format(url, g))
+                insert_error = jsonsert.imagesert(g, None, None)
+
+            else:
+                logging.info('inerting details into the guide {0}'.format(g))
+                insert_error = jsonsert.imagesert(g, filename, url)
+
+        else:
+            logging.error('could not find a depiction image for {0} so there will be no banner'.format(g))
+            insert_error = jsonsert.imagesert(g, None, None)
+            error = True
+
+        if insert_error:
+            logging.error("problem inserting the image into {0}".format(g))
+            error = True
+
+        pbar.update(i+1)
+
+
+    pbar.finish()
+    return error
+
+def remove_banner(guide_folder, filename):
+    """
+    remove the banner file from the folder of the guide.
+    """
+
+    absolute_filename = os.path.join(guide_folder, filename)
+
+    remove_template = "rm -f {0}"
+    remove_instance = remove_template.format(absolute_filename)
+
+    status = subprocess.call(remove_instance, shell=True)
+
+    error = status != 0
+    return error
+
+def depiction_url(guide_filename, user_agent, classpath, endpoint):
+    """
+    Uses the description generator to retrieve the depiction url of the
+    guide.
+    """
+
+    content = None
+    with open(guide_filename,'r') as guide_file:
+        content = json.load(guide_file, object_pairs_hook = collections.OrderedDict)
+    if not content:
+        logging.error("could not load json guide from {0}."\
+                " No depiction url can be found".format(guide_filename))
+        return None
+
+    search = cityinfo.cityinfo(content)
+    uri = cityres.cityres(search, endpoint)
+
+    if not uri:
+        logging.error("could not find a dbpedia resource for {0}."\
+                " No depiction url can be found.".format(guide_filename))
+        return None
+
+    unquoted_uri = unquote(uri)
+    # infer the english wikivoyage from the uri.
+    wiki_urls = urlinfer.urlinferwiki([unquoted_uri])
+
+    wikivoyage = "wikivoyage"
+    wikipedia = "wikipedia"
+
+    wikivoyage_urls = [u for u in wiki_urls if wikivoyage in urlparse(u).netloc]
+    wikipedia_urls = [u for u in wiki_urls if wikipedia in urlparse(u).netloc]
+
+
+    depiction_url = None
+
+    if len(wikivoyage_urls) > 0:
+        depiction_url = depiction_source(wikivoyage_urls[0],
+                classpath,
+                user_agent)
+    if len(wikipedia_urls) > 0 and not depiction_url:
+        depiction_url = depiction_source(wikipedia_urls[0],
+                classpath,
+                user_agent)
+
+    if not depiction_url:
+        logging.error("could not infer a depiction source for {0}.".format(guide_filename))
+
+    return depiction_url
+
+def depiction_source(src, classpath, user_agent):
+    """
+    returns a depiction url from the src. Will return None if not found."
+    """
+
+    depiction_template = "ng {0} -u '{1}' -d '{2}'"
+    depiction_instance = depiction_template.format(classpath, user_agent ,src)
+
+    result = subprocess.check_output(depiction_instance,
+                                     shell=True,
+                                     universal_newlines=True)
+    if result == 'nil\n':
+        logging.error("wikison returned nil for {0}".format(src))
+        return None
+
+    result = unquote(result.strip())
+    return result
+
+def download(folder, filename, url):
+    """
+    Uses wget to fetch the url content and saves it to folder under filename.
+    inserts it into the pics.zip file
+    """
+
+    absolute_filename = os.path.join(folder, filename)
+
+    wget_template = "wget -O {0} {1}"
+    wget_instance = wget_template.format(absolute_filename, url)
+
+    status = subprocess.call(wget_instance, shell = True)
+    error = status != 0
+    return error
+
+def zip_insert(folder, filename, zipname='pics.zip'):
+    """
+    inserts the banner into the already existing pics.zip file. Create the
+    pics.zip file if it does not exist.
+    """
+
+    absolute_zipname = os.path.join(folder,zipname)
+    absolute_filename = os.path.join(folder,filename)
+
+    zip_insert_template = "zip -g -j {0} {1}"
+    zip_insert_instance = zip_insert_template.format(
+            absolute_zipname,
+            absolute_filename
+            )
+
+    logging.info("insert zip with {0}".format(zip_insert_instance))
+    status = subprocess.call(zip_insert_instance, shell = True)
+    error = status != 0
+    return error
+
+def url_filename(url):
+    """
+    returns an appropriate filename for the given url.
+
+    Example
+    =======
+
+    >>> url_filename("http://mycooldomain.com/path/to/file.jpg")
+    'file.jpg'
+
+    >>> url_filename("http://mycooldomain.com/api.php?param=1")
+    'api.php'
+
+    >>> url_filename(";asddasdad")
+    ''
+
+    """
+
+    parsed = urlparse(url)
+    split_path = parsed.path.split('/')
+
+    filename = ''
+    if len(split_path) > 1:
+        filename = split_path[-1]
+
+    return filename
 
 def description_publish(guides,
                         user_agent,
@@ -352,16 +560,6 @@ def editorial_publish(guides,
     # init the nailgun thing for ed content generation.
     nailguninit(nailgun_bin,content_generator)
 
-    # helper function used during editorial content generation.
-    def unquote(uri):
-        """
-        remove the " at each end of a string if present.
-        """
-        if len(uri) < 2:
-            return uri
-
-        if uri[0] == '"' and uri[-1] == '"':
-            return uri[1:-1]
 
     searches= {}
     widgets = ['extracting editorial content for the guides:',
@@ -540,6 +738,16 @@ def guide_file(path,guide_name):
         return dir_content[0]
     else:
         return None
+
+def unquote(uri):
+    """
+    remove the " at each end of a string if present.
+    """
+    if len(uri) < 2:
+        return uri
+
+    if uri[0] == '"' and uri[-1] == '"':
+        return uri[1:-1]
 
 if __name__ == '__main__':
     main()
