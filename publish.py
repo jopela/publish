@@ -761,8 +761,7 @@ def remove_homepage_guide(guide_name, domains):
     domains_set = set(domains)
 
     with open(guide_name,'r') as guide:
-        content = json.load(guide_file,
-                object_pairs_hook = collections.OrderedDict)
+        content = json.load(guide, object_pairs_hook = collections.OrderedDict)
 
     if not content:
         error = True
@@ -820,7 +819,6 @@ def remove_homepage_from_domains(guides,domains):
     pbar.finish()
 
     return error
-
 
 def unquote(uri):
     """
