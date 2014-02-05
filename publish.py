@@ -143,7 +143,7 @@ def main():
             action = 'store_true'
             )
 
-    publish_choices = ('description','editorial','zipcode-remove','banner')
+    publish_choices = ('description','editorial','zipcode-remove','banner','homepage-remove')
     parser.add_argument(
             '-p',
             '--publish-functions',
@@ -151,6 +151,15 @@ def main():
                     'Defaults to {0}'.format(publish_choices),
             nargs='+',
             default=publish_choices
+            )
+
+    default_homepage_domains = ["facebook", "yelp"]
+    parser.add_argument(
+            '-H',
+            '--homepage-domains',
+            help='domains of the hompage urls that need to be removed',
+            nargs='+',
+            default=default_homepage_domains
             )
 
     args = parser.parse_args()
@@ -182,7 +191,8 @@ def main():
             args.log_file,
             args.nailgun_bin,
             args.content_generator,
-            args.description_gen)
+            args.description_gen,
+            args.homepage_domains)
 
     return
 
@@ -214,7 +224,8 @@ def publish(path,
             log_file,
             nailgun_bin,
             content_generator,
-            description_gen):
+            description_gen,
+            homepage_domains):
     """
     Runs the publishing operation on the given directory path.
     """
@@ -243,7 +254,9 @@ def publish(path,
         logging.info('starting zipcode cleanup')
         error |= zipclean.zipclean(path, guide_name)
 
-
+    if 'homepage-remove' in publish_functions:
+        logging.info('starting homepage cleanup')
+        error |= remove_homepage_from_domains(guides, homepage_domains)
 
     if 'editorial' in publish_functions:
         logging.info('starting editorial content generation')
@@ -260,6 +273,7 @@ def publish(path,
                     log_file))
 
 
+    logging.info('publish operation finished')
     nailgunstop()
     return
 
@@ -738,6 +752,75 @@ def guide_file(path,guide_name):
         return dir_content[0]
     else:
         return None
+
+def remove_homepage_guide(guide_name, domains):
+    """
+    remove the bad homepage from the guide.
+    """
+
+    domains_set = set(domains)
+
+    with open(guide_name,'r') as guide:
+        content = json.load(guide_file,
+                object_pairs_hook = collections.OrderedDict)
+
+    if not content:
+        error = True
+        return error
+
+    pois = None
+
+    try:
+        pois = content['Cities'][0]['pois']
+    except KeyError:
+        logging.error('{0} contained no POIs. Skipping'.format(guide_name))
+        error = True
+        return error
+
+    for poi in pois:
+        try:
+            homepage = poi['homepage']['homepage']
+            parsed_homepage = urlparse(homepage)
+            full_homepage_domain = parsed_homepage.netloc
+            tld = full_homepage_domain.split(".")[-2]
+            if tld in domains_set:
+                poi['homepage'] = {"homepage" : None}
+        except Exception:
+            pass
+
+    error = True
+    with open(guide_name,'w') as guide:
+        json.dump(content,guide)
+        error = False
+
+    return error
+
+def remove_homepage_from_domains(guides,domains):
+    """
+    for all the guides, will remove the homepage of the poi that match a
+    given domain.
+    """
+    widgets = ['removing bad homepages from guides',
+               AnimatedMarker(markers='◐◓◑◒'),
+               Percentage(),
+               ETA()]
+
+    pbar = ProgressBar(widgets=widgets,maxval=len(guides)+1).start()
+
+    error = False
+    for i,g in enumerate(guides):
+        remove_error = remove_homepage_guide(g,domains)
+        if remove_error:
+            logging.error("could not remove the bad homepage'\
+                    ' from {0}".format(g))
+            error |= True
+
+        pbar.update(i+1)
+
+    pbar.finish()
+
+    return error
+
 
 def unquote(uri):
     """
