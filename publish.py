@@ -294,6 +294,7 @@ def country_code(guides):
     """
 
     nbr_guides = len(guides)
+    error = False
 
     # prepare the progress bar.
     bar = Bar('adding country codes to city guides', max=nbr_guides)
@@ -307,6 +308,7 @@ def country_code(guides):
             logging.error('could not load content for:{}.This guide will.'\
                     'not contain an ISO3166 alpha2 country code'.format(g))
             bar.next()
+            error = True
             continue
 
         # compute the iso 3166 alpha2 of the country code based on the country
@@ -319,6 +321,7 @@ def country_code(guides):
                     ' will not contain an ISO3166 alpha2' \
                     ' country code'.format(g))
             bar.next()
+            error = True
             continue
 
         try:
@@ -329,6 +332,7 @@ def country_code(guides):
                     ' guide {} will not contain a'\
                     ' country code.'.format(country,g))
             bar.next()
+            error = True
             continue
 
         # insert the alpha2 code into the guide.
@@ -340,7 +344,7 @@ def country_code(guides):
 
         bar.next()
 
-    return
+    return error
 
 def categories(guides):
     """
