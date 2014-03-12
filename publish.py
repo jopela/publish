@@ -266,7 +266,7 @@ def publish(path,
 
     if 'iso3166' in publish_functions:
         logging.info('starting iso3166 alpha2 appending')
-        error |=
+        error |= country_code(guides)
 
     if 'editorial' in publish_functions:
         logging.info('starting editorial content generation')
