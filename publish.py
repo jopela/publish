@@ -45,7 +45,7 @@ def main():
             default='result.json'
             )
 
-    default_endpoint = 'http://192.168.1.202:8890/sparql'
+    default_endpoint = 'http://datastore:8890/sparql'
     parser.add_argument(
             '-e',
             '--endpoint',
@@ -143,7 +143,7 @@ def main():
             action = 'store_true'
             )
 
-    publish_choices = ('description','editorial','zipcode-remove','banner','homepage-remove')
+    publish_choices = ('description','editorial','zipcode-remove','banner','homepage-remove','categories')
     parser.add_argument(
             '-p',
             '--publish-functions',
@@ -258,6 +258,10 @@ def publish(path,
         logging.info('starting homepage cleanup')
         error |= remove_homepage_from_domains(guides, homepage_domains)
 
+    if 'categories' in publish_functions:
+        logging.info('starting guide categories cleanup')
+        error |= categories(guides)
+
     if 'editorial' in publish_functions:
         logging.info('starting editorial content generation')
         error |= editorial_publish(guides,
@@ -276,6 +280,67 @@ def publish(path,
     logging.info('publish operation finished')
     nailgunstop()
     return
+
+
+def categories(guides):
+    """
+    collect categories/subcategories from the guides and serialize them
+    on top.
+    """
+
+    error = False
+    for guide in guides:
+        cur_guide_content = None
+        subjects = dict()
+
+        with open(guide,'r') as fileguide:
+            cur_guide_content = json.load(fileguide, object_pairs_hook=collections.OrderedDict)
+            cur_guide_content = dict(cur_guide_content)
+
+        if not cur_guide_content:
+            logging.error('no content found in {}'.format(guide))
+            continue
+
+        try:
+            guide_pois = cur_guide_content['Cities'][0]['pois']
+        except Exception as e:
+            logging.error('could not get a hold on the pois for {}. Guide will not be considered'.format(guide))
+            error = True
+            continue
+
+        for poi in guide_pois:
+            category = poi.get("category", None)
+            if category:
+                # just add the category to the subjects if not already in.
+                if not category in subjects:
+                    subjects[category] = set()
+
+                subcategory = poi.get("subcategory", None)
+                if subcategory:
+                    subjects[category].add(subcategory)
+
+            else:
+                continue
+
+        guide_subject = cur_guide_content.get('Subjects', None)
+        if guide_subject == None:
+            error = True
+            logging.error('could not get a hold of the guide subject for {}. Categories rectification ignored for this guide'.format(guide))
+            continue
+        else:
+            new_subjects = dict()
+            for k,v in subjects.items():
+                new_subjects[k] = list(v)
+
+
+            # Assign the current guide subjects.
+            cur_guide_content['Subjects'] = new_subjects
+
+            # reserialize the guide.
+            with open(guide,'w') as fileguide:
+                json.dump(cur_guide_content, fileguide)
+
+    return error
 
 def banner(guides,
            endpoint,
@@ -620,6 +685,7 @@ def editorial_publish(guides,
                 ' inserted.'.format(guide))
         pbar.update(i+1)
 
+    pbar.finish()
     return error
 
 
@@ -641,7 +707,6 @@ def quote_urls(urls):
     """
     takes a list of url string and quote them, if need be, for usage inside
     a shell invocation string"
-
 
     EXAMPLE
     =======
@@ -675,7 +740,7 @@ def nailguninit(path, jar):
     The function will set the correct nailgun class path to use the
     editorial content jar specified by the user.
     This is included for portability but nailgun should usually be started on
-    the mtrip datastore machine (192.168.1.202).
+    the mtrip datastore machine.
     """
 
     print("starting nailgun ...")
@@ -732,12 +797,10 @@ def list_guide(path, guide_name):
     """
 
     # list all directories in the path.
-    directories = [os.path.join(path,d) for d in os.listdir(path) if
-            os.path.isdir(os.path.join(path,d))]
+    directories = [os.path.join(path,d) for d in os.listdir(path) if os.path.isdir(os.path.join(path,d))]
 
     # get the result filename from the dir
-    guides = [guide_file(d,guide_name) for d in directories if guide_file(d,
-        guide_name)]
+    guides = [guide_file(d,guide_name) for d in directories if guide_file(d, guide_name)]
 
     return guides
 
@@ -745,8 +808,7 @@ def guide_file(path,guide_name):
     """ Return the json filename guide found in path. None if it cannot be
     found. """
 
-    dir_content = [os.path.join(path,content) for content in os.listdir(path)
-            if guide_name in os.path.join(path,content)]
+    dir_content = [os.path.join(path,content) for content in os.listdir(path) if guide_name in os.path.join(path,content)]
 
     if len(dir_content) > 0:
         return dir_content[0]
