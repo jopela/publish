@@ -12,7 +12,9 @@ import sys
 import jsonsert
 import zipclean
 import collections
+import iso3166
 
+from progress.bar import Bar
 from progressbar import ProgressBar, AnimatedMarker, Percentage, ETA
 from time import sleep
 from urllib.parse import urlparse
@@ -143,7 +145,7 @@ def main():
             action = 'store_true'
             )
 
-    publish_choices = ('description','editorial','zipcode-remove','banner','homepage-remove','categories')
+    publish_choices = ('description','editorial','zipcode-remove','banner','homepage-remove','categories','iso3166')
     parser.add_argument(
             '-p',
             '--publish-functions',
@@ -262,6 +264,10 @@ def publish(path,
         logging.info('starting guide categories cleanup')
         error |= categories(guides)
 
+    if 'iso3166' in publish_functions:
+        logging.info('starting iso3166 alpha2 appending')
+        error |=
+
     if 'editorial' in publish_functions:
         logging.info('starting editorial content generation')
         error |= editorial_publish(guides,
@@ -281,6 +287,60 @@ def publish(path,
     nailgunstop()
     return
 
+
+def country_code(guides):
+    """
+    adds the country code to all the city guides.
+    """
+
+    nbr_guides = len(guides)
+
+    # prepare the progress bar.
+    bar = Bar('adding country codes to city guides', max=nbr_guides)
+
+    for g in guides:
+        cur_content = None
+        with open(g,'r') as file_guide:
+            cur_content = json.load(file_guide,object_pairs_hook=collections.OrderedDict)
+
+        if not cur_content:
+            logging.error('could not load content for:{}.This guide will.'\
+                    'not contain an ISO3166 alpha2 country code'.format(g))
+            bar.next()
+            continue
+
+        # compute the iso 3166 alpha2 of the country code based on the country
+        # attribute of the guide.
+        country = None
+        try:
+            country = cur_content['Cities'][0]['country']
+        except:
+            logging.error('Could not retrieve country name for:{}. This guide'\
+                    ' will not contain an ISO3166 alpha2' \
+                    ' country code'.format(g))
+            bar.next()
+            continue
+
+        try:
+            alpha2 = iso3166.countries[country].alpha2
+        except:
+            logging.error('The country name {} could'\
+                    ' not be mapped to an iso3166 alpha2 country code.'\
+                    ' guide {} will not contain a'\
+                    ' country code.'.format(country,g))
+            bar.next()
+            continue
+
+        # insert the alpha2 code into the guide.
+        cur_content['Cities'][0]['alpha2'] = alpha2
+
+        # reserialize the guide content.
+        with open(g,'w') as file_guide:
+            json.dump(cur_content, file_guide)
+
+        bar.next()
+
+    return
 
 def categories(guides):
     """
