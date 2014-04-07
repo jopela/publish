@@ -324,16 +324,20 @@ def country_code(guides):
             error = True
             continue
 
-        try:
-            alpha2 = iso3166.countries[country].alpha2
-        except:
-            logging.error('The country name {} could'\
-                    ' not be mapped to an iso3166 alpha2 country code.'\
-                    ' guide {} will not contain a'\
-                    ' country code.'.format(country,g))
-            bar.next()
-            error = True
-            continue
+        # handle the special cases here
+        if country == 'Congo, The Democratic Republic Of The':
+            alpha2 = 'CD'
+        else:
+            try:
+                alpha2 = iso3166.countries[country].alpha2
+            except:
+                logging.error('The country name {} could'\
+                        ' not be mapped to an iso3166 alpha2 country code.'\
+                        ' guide {} will not contain a'\
+                        ' country code.'.format(country,g))
+                bar.next()
+                error = True
+                continue
 
         # insert the alpha2 code into the guide.
         cur_content['Cities'][0]['alpha2'] = alpha2
@@ -682,7 +686,7 @@ def description_content(urls,class_path, user_agent):
     """
     quoted_urls = quote_urls(urls)
     urls_args = " ".join(quoted_urls)
-    ed_gen_template = 'ng {0} -u "{1}" -m  {2}'
+    ed_gen_template = 'ng {0} -u "{1}" -m {2}'
     ed_gen_instance = ed_gen_template.format(class_path, user_agent, urls_args)
 
     content = subprocess.check_output(ed_gen_instance, shell=True,
