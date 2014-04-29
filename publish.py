@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding:utf-8 -*-
 import argparse
 import os
 import cityinfo
@@ -28,6 +29,24 @@ def main():
             'path',
             help='root directory that contain all the guides',
             nargs='?'
+            )
+
+    mbroker_username_default = 'guest'
+    parser.add_argument(
+            '-U',
+            '--mbroker-username',
+            help='username used to access the message broker for RPC.'\
+                    ' Default to {}.'.format(mbroker_username_default),
+            default = mbroker_username_default
+            )
+
+    mbroker_password_default = 'guest'
+    parser.add_argument(
+            '-P',
+            '--mbroker-password',
+            help='password used to access the message broker for RPC.'\
+                    'Default to {}.'.format(mbroker_password_default),
+            default = mbroker_password_default
             )
 
     parser.add_argument(
@@ -145,7 +164,7 @@ def main():
             action = 'store_true'
             )
 
-    publish_choices = ('description','editorial','zipcode-remove','banner','homepage-remove','categories','iso3166')
+    publish_choices = ('description','editorial','zipcode-remove','banner','homepage-remove','categories','iso3166','guesslang')
     parser.add_argument(
             '-p',
             '--publish-functions',
@@ -194,7 +213,9 @@ def main():
             args.nailgun_bin,
             args.content_generator,
             args.description_gen,
-            args.homepage_domains)
+            args.homepage_domains,
+            args.mbroker_username,
+            args.mbroker_password)
 
     return
 
@@ -227,7 +248,9 @@ def publish(path,
             nailgun_bin,
             content_generator,
             description_gen,
-            homepage_domains):
+            homepage_domains,
+            mbroker_username,
+            mbroker_password):
     """
     Runs the publishing operation on the given directory path.
     """
@@ -268,6 +291,10 @@ def publish(path,
         logging.info('starting iso3166 alpha2 appending')
         error |= country_code(guides)
 
+    if 'guesslang' in publish_functions:
+        logging.info('starting language guessing for poi name')
+        error |= guesslang(path, mbroker_username, mbroker_password)
+
     if 'editorial' in publish_functions:
         logging.info('starting editorial content generation')
         error |= editorial_publish(guides,
@@ -276,21 +303,31 @@ def publish(path,
                                    user_agent,
                                    nailgun_bin,
                                    content_generator)
-
     if error:
         print('the software encountered errors during guide publication.'\
                 ' please see the log file ({0}) for more details'.format(
                     log_file))
 
-
     logging.info('publish operation finished')
     nailgunstop()
     return
 
+def guesslang(path,username, password):
+    """
+    Lang guess script on every file.
+    """
+
+    lang_client = "lang_publish.py -u {} -p {} {} &> /dev/null".format(
+            username,
+            password,
+            path)
+
+    status = subprocess.call(lang_client, shell=True)
+    return False
 
 def country_code(guides):
     """
-    adds the country code to all the city guides.
+    Adds the country code to all the city guides.
     """
 
     nbr_guides = len(guides)
@@ -668,7 +705,8 @@ def description_publish(guides,
                                     url))
                         error = True
                     else:
-                        v['text'] = content
+                        v['text'] = content.get('article',None)
+                        v['source']['url'] = content.get('url',None)
 
             pbar.update(i+1)
 
