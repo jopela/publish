@@ -14,7 +14,9 @@ import jsonsert
 import zipclean
 import collections
 import iso3166
+import shutil
 
+from zipfile import ZipFile
 from progress.bar import Bar
 from progressbar import ProgressBar, AnimatedMarker, Percentage, ETA
 from time import sleep
@@ -173,7 +175,8 @@ def main():
             'categories',
             'iso3166',
             'guesslang',
-            'attraction-remove')
+            'attraction-remove',
+            'remove-street-pic')
 
     parser.add_argument(
             '-p',
@@ -279,6 +282,10 @@ def publish(path,
     if 'attraction-remove' in publish_functions:
         logging.info('starting attraction remove')
         error |= filter_poi(guides, must_remove_attraction)
+
+    if 'remove-street-pic' in publish_functions:
+        logging.info('starting removal of street pic remove')
+        error |= remove_street_picture(guides)
 
     if 'banner' in publish_functions:
         logging.info('starting banner fetching for the guides')
@@ -834,6 +841,105 @@ def description_content(urls,class_path, user_agent):
             universal_newlines=True)
 
     return content
+
+
+def guide_content(guide):
+    """
+    return the content of a guide.
+    """
+
+    content = None
+    with open(guide,'r') as file_guide:
+        content = json.load(file_guide,
+                object_pairs_hook = collections.OrderedDict)
+
+    if not content:
+        logging.error('problem while loading the content for {}'.format(guide))
+        return None
+    else:
+        return content
+
+
+def remove_street_picture(guides):
+    """
+    Remove pictures from the poi when the subcategory is street.
+    """
+
+    removed_pic_name = []
+    Error = False
+    bar = Bar('removing street pics',max=len(guides))
+    bar.start()
+    for guide in guides:
+        content = guide_content(guide)
+        if not content:
+            continue
+        else:
+            # get the pois
+            pois = None
+            try:
+                pois = content['Cities'][0]['pois']
+            except Exception as e:
+                logging.error('guide {} did not contain pois. Street picture'\
+                        ' will not be removed.'.format(guide))
+                bar.next()
+                continue
+
+            for p in pois:
+                sub = p.get('subcategory')
+                if sub == 'street':
+                    try:
+                        pic = p['picture']['picture']
+                        removed_pic_name.append(pic)
+                        p.pop('picture')
+                    except Exception as e:
+                        continue
+
+            # reserialize the content.
+            with open(guide, 'w') as file_guide:
+                json.dump(content,file_guide)
+
+            remove_from_zip(guide, removed_pic_name)
+
+        bar.next()
+
+    bar.finish()
+
+    return Error
+
+def archive_filename(guide_filename):
+    """
+    return the full path of the archive given guide_filename.
+    """
+
+    archive_name = 'pics.zip'
+    dirname = os.path.dirname(guide_filename)
+
+    arch_filename = os.path.join(dirname,archive_name)
+    return arch_filename
+
+
+def remove_from_zip(guide, removed_pic_name):
+    """
+    Los Pollos Hermanos.
+    """
+
+    # Get the filename of the tar archive.
+    archive_name = archive_filename(guide)
+    pic_set = set(removed_pic_name)
+
+    tmp_dest = '/tmp/pictures'
+    with ZipFile(archive_name, 'r') as z:
+        new_files = [n for n in z.namelist() if n not in pic_set]
+        z.extractall(tmp_dest, new_files)
+
+    with ZipFile(archive_name, 'w') as z:
+        for f in new_files:
+            z.write(os.path.join(tmp_dest, f),arcname=f)
+
+    # Delete the content of the tmp destination.
+    shutil.rmtree(tmp_dest)
+
+    return
 
 def editorial_publish(guides,
                       endpoint,
