@@ -164,7 +164,17 @@ def main():
             action = 'store_true'
             )
 
-    publish_choices = ('description','editorial','zipcode-remove','banner','homepage-remove','categories','iso3166','guesslang')
+    publish_choices = (
+            'description',
+            'editorial',
+            'zipcode-remove',
+            'banner',
+            'homepage-remove',
+            'categories',
+            'iso3166',
+            'guesslang',
+            'attraction-remove')
+
     parser.add_argument(
             '-p',
             '--publish-functions',
@@ -266,6 +276,10 @@ def publish(path,
                                      nailgun_bin,
                                      description_gen)
 
+    if 'attraction-remove' in publish_functions:
+        logging.info('starting attraction remove')
+        error |= filter_poi(guides, must_remove_attraction)
+
     if 'banner' in publish_functions:
         logging.info('starting banner fetching for the guides')
         error |= banner(guides,
@@ -325,11 +339,100 @@ def guesslang(path,username, password):
     status = subprocess.call(lang_client, shell=True)
     return False
 
+def filter_poi(guides, f):
+    """
+    Remove certain POIS based on a filter function. Filter function should
+    return True if the poi should be REMOVED.
+    """
+    nbr_guides = len(guides)
+
+    bar = Bar('filtering the guides poi with a function.',max=nbr_guides)
+    Error = False
+
+    bar.start()
+
+    for g in guides:
+        cur_content = None
+        with open(g,'r') as file_guide:
+            cur_content = json.load(
+                    file_guide,
+                    object_pairs_hook=collections.OrderedDict)
+
+        if not cur_content:
+            logging.error('could not load content for:{}. POI not filtered'.format(g))
+
+        else:
+
+            # get the POI.
+            guide_pois = None
+            try:
+                guide_pois = cur_content['Cities'][0]['pois']
+            except:
+                logging.error('{} did not contain any POI. They will not be filtered'.format(g))
+                bar.next()
+                continue
+
+            new_pois = [p for p in guide_pois if not f(p)]
+            cur_content['Cities'][0]['pois'] = new_pois
+
+            # reserialize the guide content.
+            with open(g,'w') as file_guide:
+                json.dump(cur_content, file_guide)
+
+        bar.next()
+
+
+    bar.finish()
+    return Error
+
+def must_remove_attraction(poi):
+    """
+    returns true if we must drop the attraction POI
+    """
+
+    category = poi.get('category',None)
+
+    if category != 'attractions':
+        return False
+
+    descriptions = poi.get('descriptions',None)
+
+    if not descriptions:
+        return True
+
+    urls = descriptions_url(descriptions)
+
+    wikipedias = ['wikipedia.org' in url for url in urls]
+    has_wikipedia = any(wikipedias)
+
+    wikitravels = ['wikitravel.org' in url for url in urls]
+    has_wikitravel = any(wikitravels)
+
+    rank_limit = 20
+    ranking = poi.get('ranking',rank_limit+1)
+
+    export = has_wikipedia or (has_wikitravel and (ranking < rank_limit))
+
+    return not export
+
+def descriptions_url(descriptions):
+    """
+    Returns the descriptions urls located in a description dictionary.
+    """
+    urls = []
+
+    for k,v in descriptions.items():
+        try:
+            url = v['source']['url']
+            urls.append(url)
+        except:
+            continue
+    return urls
+
 def country_code(guides):
     """
     Adds the country code to all the city guides.
     """
-
     nbr_guides = len(guides)
     error = False
 

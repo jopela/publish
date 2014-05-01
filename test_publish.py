@@ -5,10 +5,13 @@ import mtriputils
 from nose import with_setup
 
 from publish import categories
+from publish import descriptions_url
+from publish import must_remove_attraction
 
 
 test_guide_filename = '/root/dev/publish/test-guides/Lisbon-test/result.json'
 test_guide_path = '/root/dev/publish/test-guides'
+
 
 def setup_func():
     """
@@ -85,12 +88,119 @@ def test_categories():
     assert guide_result == expected_result
     return
 
+def test_descriptions_url():
+
+    expected = ['http://wikipedia.org/wiki/Montreal',
+                'http://wikitravel.org/wiki/Montreal']
+
+    descriptions = {"fr":
+                    {"source":
+                        {"url":expected[1]}},
+                    "en":
+                    {"source":
+                        {"url":expected[0]}}}
 
 
+    result = descriptions_url(descriptions)
 
 
+    return
 
 
+def test_must_remove_attraction():
+
+    poi = {
+                    "category": "attractions",
+                    "ranking": 1355,
+                    "duration": 20,
+                    "price_range": 'null',
+                    "homepage": {
+                        "homepage": 'null'
+                    },
+                    "descriptions": {
+                        "fr": {
+                            "source": {
+                                "url": "http://facebook.com/159772950715149",
+                                "source": "Facebook",
+                                "id": 10809262
+                            },
+                            "text": "Mairie des Lilas est une station du métro de Paris sur la ligne 11, dans la commune des Lilas."
+                        }
+                    }
+                }
+
+    result = must_remove_attraction(poi)
+    assert result
+
+    return
+
+def test_must_not_remove_attraction():
+
+    poi = {
+                    "category": "attractions",
+                    "ranking": 19,
+                    "duration": 20,
+                    "price_range": 'null',
+                    "homepage": {
+                        "homepage": 'null'
+                    },
+                    "descriptions": {
+                        "fr": {
+                            "source": {
+                                "url": "http://facebook.com/159772950715149",
+                                "source": "Facebook",
+                                "id": 10809262
+                            },
+                            "text": "Mairie des Lilas est une station du métro de Paris sur la ligne 11, dans la commune des Lilas."
+                        },
+                        "en" :{
+                            "source":{
+                                "url":"http://wikitravel.org/lol",
+                                "source":"Facebook",
+                                "id":10292929292
+                                }
+                            }
+                        }
+                    }
 
 
+    result = must_remove_attraction(poi)
+    assert not result
+
+    return
+
+def test_must_not_remove_attraction_wiki():
+
+    poi = {
+                    "category": "attractions",
+                    "ranking": 1000,
+                    "duration": 20,
+                    "price_range": 'null',
+                    "homepage": {
+                        "homepage": 'null'
+                    },
+                    "descriptions": {
+                        "fr": {
+                            "source": {
+                                "url": "http://facebook.com/159772950715149",
+                                "source": "Facebook",
+                                "id": 10809262
+                            },
+                            "text": "Mairie des Lilas est une station du métro de Paris sur la ligne 11, dans la commune des Lilas."
+                        },
+                        "en" :{
+                            "source":{
+                                "url":"http://wikipedia.org/lol",
+                                "source":"Facebook",
+                                "id":10292929292
+                                }
+                            }
+                        }
+                    }
+
+
+    result = must_remove_attraction(poi)
+    assert not result
+
+    return
 
