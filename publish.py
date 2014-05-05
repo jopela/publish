@@ -409,10 +409,10 @@ def must_remove_attraction(poi):
 
     urls = descriptions_url(descriptions)
 
-    wikipedias = ['wikipedia.org' in url for url in urls]
+    wikipedias = ['wikipedia.org' in url for url in urls if url]
     has_wikipedia = any(wikipedias)
 
-    wikitravels = ['wikitravel.org' in url for url in urls]
+    wikitravels = ['wikitravel.org' in url for url in urls if url]
     has_wikitravel = any(wikitravels)
 
     rank_limit = 20
@@ -898,7 +898,7 @@ def remove_street_picture(guides):
             with open(guide, 'w') as file_guide:
                 json.dump(content,file_guide)
 
-            remove_from_zip(guide, removed_pic_name)
+            #remove_from_zip(guide, removed_pic_name)
 
         bar.next()
 
