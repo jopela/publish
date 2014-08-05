@@ -681,7 +681,7 @@ def depiction_source(src, classpath, user_agent):
     returns a depiction url from the src. Will return None if not found."
     """
 
-    depiction_template = "ng-nailgun {0} -u '{1}' -d '{2}'"
+    depiction_template = "ng-nailgun {0} -u '{1}' -d '{2}' &> /dev/null"
     depiction_instance = depiction_template.format(classpath, user_agent ,src)
 
     result = subprocess.check_output(depiction_instance,
@@ -832,7 +832,7 @@ def description_content(urls,class_path, user_agent):
     """
     quoted_urls = quote_urls(urls)
     urls_args = " ".join(quoted_urls)
-    ed_gen_template = 'ng-nailgun {0} -u "{1}" -m {2}'
+    ed_gen_template = 'ng-nailgun {0} -u "{1}" -m {2} &> /dev/null'
     ed_gen_instance = ed_gen_template.format(class_path, user_agent, urls_args)
 
     content = subprocess.check_output(ed_gen_instance, shell=True,
@@ -954,10 +954,6 @@ def editorial_publish(guides,
 
 
     searches= {}
-    widgets = ['extracting editorial content for the guides:',
-               Bar(marker=RotatingMarker()),
-               Percentage(),
-               ETA()]
 
     pbar = Bar('extracting editorial content for guides:',max=len(guides)+1)
     pbar.start()
@@ -1009,7 +1005,7 @@ def editorial_content(urls, class_path, user_agent):
     """
     quoted_urls = quote_urls(urls)
     urls_args = " ".join(quoted_urls)
-    ed_gen_template = 'ng-nailgun {0} -u "{1}" {2}'
+    ed_gen_template = 'ng-nailgun {0} -u "{1}" {2} &> /dev/null'
     ed_gen_instance = ed_gen_template.format(class_path, user_agent, urls_args)
 
     content = subprocess.check_output(ed_gen_instance, shell=True,
@@ -1175,11 +1171,6 @@ def remove_homepage_from_domains(guides,domains):
     for all the guides, will remove the homepage of the poi that match a
     given domain.
     """
-    widgets = ['removing bad homepages from guides',
-               Bar(marker=RotatingMarker()),
-               Percentage(),
-               ETA()]
-
     pbar = Bar('removing bad homepages from guides',max=len(guides)+1)
     pbar.start()
 
