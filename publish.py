@@ -18,7 +18,6 @@ import shutil
 
 from zipfile import ZipFile
 from progress.bar import Bar
-from progressbar import ProgressBar, AnimatedMarker, Percentage, ETA
 from time import sleep
 from urllib.parse import urlparse
 
@@ -68,7 +67,7 @@ def main():
             default='result.json'
             )
 
-    default_endpoint = 'http://datastore:8890/sparql'
+    default_endpoint = 'http://localhost:8890/sparql'
     parser.add_argument(
             '-e',
             '--endpoint',
@@ -87,7 +86,7 @@ def main():
             default = default_nailgun_bin
             )
 
-    default_editorial_jar = '/root/dev/editorial/target/editorial-0.1.1-standalone.jar'
+    default_editorial_jar = '/usr/share/java/editorial-0.1.1-standalone.jar'
     parser.add_argument(
             '-c',
             '--content-generator',
@@ -96,7 +95,7 @@ def main():
             default = default_editorial_jar
             )
 
-    default_wikison_jar = '/root/dev/wikison/target/wikison-0.1.1-standalone.jar'
+    default_wikison_jar = '/usr/share/java/wikison-0.1.1-standalone.jar'
     parser.add_argument(
             '-D',
             '--description-gen',
@@ -176,8 +175,9 @@ def main():
             'iso3166',
             'guesslang',
             'attraction-remove',
-            'remove-street-pic',
-            'city-name-translation')
+            'remove-street-pic'
+            #'city-name-translation'
+            )
 
     parser.add_argument(
             '-p',
@@ -575,13 +575,9 @@ def banner(guides,
 
     nailguninit(nailgun_bin, description_gen)
 
-    widgets = ['fetching the depiction banner for the guides',
-               AnimatedMarker(markers='◢◣◤◥'),
-               Percentage(),
-               ETA()]
-
     error = False
-    pbar = ProgressBar(widgets=widgets,maxval=len(guides)+1).start()
+    pbar = Bar('fetching the depiction banner for the guides',max=len(guides)+1)
+    pbar.start()
 
     for i, g in enumerate(guides):
         url = depiction_url(g, user_agent, function_description_class,
@@ -610,7 +606,7 @@ def banner(guides,
             logging.error("problem inserting the image into {0}".format(g))
             error = True
 
-        pbar.update(i+1)
+        pbar.next()
 
 
     pbar.finish()
@@ -685,7 +681,7 @@ def depiction_source(src, classpath, user_agent):
     returns a depiction url from the src. Will return None if not found."
     """
 
-    depiction_template = "ng {0} -u '{1}' -d '{2}'"
+    depiction_template = "ng-nailgun {0} -u '{1}' -d '{2}'"
     depiction_instance = depiction_template.format(classpath, user_agent ,src)
 
     result = subprocess.check_output(depiction_instance,
@@ -785,13 +781,9 @@ def description_publish(guides,
         # notice the 0 index here. This is ok because there is only one city
         # per guide. Maybe that will not be the case in the future.
         pois = jsonguide['Cities'][0]['pois']
-        widgets = ['extracting description for the poi(s) in'\
-                ' {0}:'.format(g),
-                   AnimatedMarker(markers='◢◣◤◥'),
-                   Percentage(),
-                   ETA()]
 
-        pbar = ProgressBar(widgets=widgets,maxval=len(pois)+1).start()
+        pbar = Bar('extracting description for the poi(s) in {0}:'.format(g),max=len(pois)+1)
+        pbar.start()
         for i,p in enumerate(pois):
             desc = p['descriptions']
             for k, v in desc.items():
@@ -824,7 +816,7 @@ def description_publish(guides,
                         v['text'] = content.get('article',None)
                         v['source']['url'] = content.get('url',None)
 
-            pbar.update(i+1)
+            pbar.next()
 
         # redump the guide into the file
         pbar.finish()
@@ -840,7 +832,7 @@ def description_content(urls,class_path, user_agent):
     """
     quoted_urls = quote_urls(urls)
     urls_args = " ".join(quoted_urls)
-    ed_gen_template = 'ng {0} -u "{1}" -m {2}'
+    ed_gen_template = 'ng-nailgun {0} -u "{1}" -m {2}'
     ed_gen_instance = ed_gen_template.format(class_path, user_agent, urls_args)
 
     content = subprocess.check_output(ed_gen_instance, shell=True,
@@ -963,11 +955,12 @@ def editorial_publish(guides,
 
     searches= {}
     widgets = ['extracting editorial content for the guides:',
-               AnimatedMarker(markers='◐◓◑◒'),
+               Bar(marker=RotatingMarker()),
                Percentage(),
                ETA()]
 
-    pbar = ProgressBar(widgets=widgets,maxval=len(guides)+1).start()
+    pbar = Bar('extracting editorial content for guides:',max=len(guides)+1)
+    pbar.start()
 
     error = False
     for i, guide in enumerate(guides):
@@ -1004,7 +997,7 @@ def editorial_publish(guides,
 
         logging.info('editorial content for {0} sucessfully'\
                 ' inserted.'.format(guide))
-        pbar.update(i+1)
+        pbar.next()
 
     pbar.finish()
     return error
@@ -1016,7 +1009,7 @@ def editorial_content(urls, class_path, user_agent):
     """
     quoted_urls = quote_urls(urls)
     urls_args = " ".join(quoted_urls)
-    ed_gen_template = 'ng {0} -u "{1}" {2}'
+    ed_gen_template = 'ng-nailgun {0} -u "{1}" {2}'
     ed_gen_instance = ed_gen_template.format(class_path, user_agent, urls_args)
 
     content = subprocess.check_output(ed_gen_instance, shell=True,
@@ -1065,7 +1058,7 @@ def nailguninit(path, jar):
     """
 
     print("starting nailgun ...")
-    subprocess.call("ng ng-stop &> /dev/null", shell=True)
+    subprocess.call("ng-nailgun ng-stop &> /dev/null", shell=True)
 
     sleep(2)
     ng_shell_template = "java -jar {0} &> /dev/null &"
@@ -1082,7 +1075,7 @@ def nailguninit(path, jar):
     print("adding classpath to nailgun")
     sleep(2)
 
-    ng_cp_template = "ng ng-cp {0} &> /dev/null"
+    ng_cp_template = "ng-nailgun ng-cp {0} &> /dev/null"
     ng_cp_instance = ng_cp_template.format(jar )
     res = subprocess.call(ng_cp_instance, shell=True)
     if not res == 0:
@@ -1101,7 +1094,7 @@ def nailgunstop():
     shutdown nailgun .
     """
 
-    subprocess.call("ng ng-stop &> /dev/null", shell=True)
+    subprocess.call("ng-nailgun ng-stop &> /dev/null", shell=True)
     return
 
 def die(msg, error_code=-1):
@@ -1183,11 +1176,12 @@ def remove_homepage_from_domains(guides,domains):
     given domain.
     """
     widgets = ['removing bad homepages from guides',
-               AnimatedMarker(markers='◐◓◑◒'),
+               Bar(marker=RotatingMarker()),
                Percentage(),
                ETA()]
 
-    pbar = ProgressBar(widgets=widgets,maxval=len(guides)+1).start()
+    pbar = Bar('removing bad homepages from guides',max=len(guides)+1)
+    pbar.start()
 
     error = False
     for i,g in enumerate(guides):
@@ -1197,7 +1191,7 @@ def remove_homepage_from_domains(guides,domains):
                     ' from {0}".format(g))
             error |= True
 
-        pbar.update(i+1)
+        pbar.next()
 
     pbar.finish()
 
