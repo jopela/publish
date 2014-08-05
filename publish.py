@@ -176,7 +176,8 @@ def main():
             'iso3166',
             'guesslang',
             'attraction-remove',
-            'remove-street-pic')
+            'remove-street-pic',
+            'city-name-translation')
 
     parser.add_argument(
             '-p',
@@ -333,18 +334,23 @@ def publish(path,
     nailgunstop()
     return
 
+
+
 def guesslang(path,username, password):
     """
     Lang guess script on every file.
     """
 
-    lang_client = "lang_publish.py -u {} -p {} {} &> /dev/null".format(
+    lang_client = "lang_publish.py -u {} -p {} {}".format(
             username,
             password,
             path)
 
     status = subprocess.call(lang_client, shell=True)
     return False
+
+def city_name_translation(guides):
+    return
 
 def filter_poi(guides, f):
     """
