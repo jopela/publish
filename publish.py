@@ -15,6 +15,7 @@ import zipclean
 import collections
 import iso3166
 import shutil
+import psycopg2
 
 from zipfile import ZipFile
 from progress.bar import Bar
@@ -175,8 +176,8 @@ def main():
             'iso3166',
             'guesslang',
             'attraction-remove',
-            'remove-street-pic'
-            #'city-name-translation'
+            'remove-street-pic',
+            'city-name-translation'
             )
 
     parser.add_argument(
@@ -195,6 +196,14 @@ def main():
             help='domains of the hompage urls that need to be removed',
             nargs='+',
             default=default_homepage_domains
+            )
+
+    default_db_conf = ".db"
+    parser.add_argument(
+            '-C',
+            '--configdb',
+            help='json configuration file for the geoname database',
+            default=default_db_conf
             )
 
     args = parser.parse_args()
@@ -229,7 +238,8 @@ def main():
             args.description_gen,
             args.homepage_domains,
             args.mbroker_username,
-            args.mbroker_password)
+            args.mbroker_password,
+            args.configdb)
 
     return
 
@@ -264,7 +274,8 @@ def publish(path,
             description_gen,
             homepage_domains,
             mbroker_username,
-            mbroker_password):
+            mbroker_password,
+            dbconf):
     """
     Runs the publishing operation on the given directory path.
     """
@@ -317,6 +328,10 @@ def publish(path,
         logging.info('starting language guessing for poi name')
         error |= guesslang(path, mbroker_username, mbroker_password)
 
+    if 'city-name-translation' in publish_functions:
+        logging.info('starting alternate city name translation')
+        error |= city_name_translation(dbconf,guides)
+
     if 'editorial' in publish_functions:
         logging.info('starting editorial content generation')
         error |= editorial_publish(guides,
@@ -349,8 +364,77 @@ def guesslang(path,username, password):
     status = subprocess.call(lang_client, shell=True)
     return False
 
-def city_name_translation(guides):
-    return
+def guide_id(guide_path):
+    """
+    return a guide id number from its path.
+    """
+    dir_name = os.path.dirname(guide_path)
+
+    parts = dir_name.split("/")
+
+    identifier = parts[-1]
+
+    city_id = None
+    try:
+        city_id = int(identifier.split('-')[-1])
+    except:
+        pass
+
+    return city_id
+
+def city_name_translation(conf, guides):
+
+    # read the database configuration.
+    db_conf = None
+    with open(conf,'r') as db:
+        db_conf = json.load(db)
+
+    if not db_conf:
+        logging.error('could not load the database configuration for city-name-translation')
+        return True
+
+    host = db_conf.get('host',None)
+    user = db_conf.get('user',None)
+    password = db_conf.get('password',None)
+    dbname = db_conf.get('dbname',None)
+
+    # prepare the database connection.
+    connection = None
+    try:
+        connection = psycopg2.connect(
+                host=host,
+                user=user,
+                password=password,
+                dbname=dbname)
+    except:
+        logging.error('could not establish connection to the db. Is the provided info in the db credential file correct?')
+        return True
+
+    query_template = "select isolanguage, alternate_name from projects_alternate_names where projectid = %s"
+
+    for guide in guides:
+        # extract the guide id from the guide name
+
+        content = guide_content(guide)
+
+        city_id = guide_id(guide)
+
+        #make the query
+        cur = connection.cursor()
+        cur.execute(query_template, (city_id,))
+
+        # build the alternate names
+        alternates = [ {"isolanguage": r[0], "alternate-name": r[1]} for r in  cur]
+
+        # insert alternate-names into the guide
+
+        content['Cities'][0]['alternate-names'] = alternates
+
+        # dump the new content in the file
+        with open(guide,'w') as g:
+            json.dump(content, g)
+
+    return False
 
 def filter_poi(guides, f):
     """
