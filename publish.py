@@ -16,6 +16,7 @@ import collections
 import iso3166
 import shutil
 import psycopg2
+import reversegeo
 
 from zipfile import ZipFile
 from progress.bar import Bar
@@ -177,7 +178,8 @@ def main():
             'guesslang',
             'attraction-remove',
             'remove-street-pic',
-            'city-name-translation'
+            'city-name-translation',
+            'reversegeo'
             )
 
     parser.add_argument(
@@ -941,6 +943,51 @@ def guide_content(guide):
     else:
         return content
 
+def add_parse_address(guides):
+    """
+    Uses reverse geocoding to try and add a parsed version of the address.
+    """
+    Error = False
+    bar = Bar('adding parsed address',max=len(guides))
+    bar.start()
+
+    for guide in guides:
+        content = guide_content(guide)
+        if not content:
+            continue
+        else:
+            # get the pois
+            pois = None
+            try:
+                pois = content['Cities'][0]['pois']
+            except Exception as e:
+                logging.error('guide {} did not contain pois. Street picture'\
+                        ' will not be removed.'.format(guide))
+                bar.next()
+                continue
+
+            for p in pois:
+                latitude = get_in(p, "location", "latitude")
+                longitude = get_in(p, "location", "longitude")
+
+                coords = ", ".join[latitude,longitude]
+                parsed = reversegeo.reverse_geocode(coords)
+                try:
+                    p['address']['parsed'] = parsed
+                except:
+                    logging.error('could not add parsed address to a poi ...')
+
+            # reserialize the content.
+            with open(guide, 'w') as file_guide:
+                json.dump(content,file_guide)
+
+            #remove_from_zip(guide, removed_pic_name)
+
+        bar.next()
+
+    bar.finish()
+
+
 
 def remove_street_picture(guides):
     """
@@ -1271,6 +1318,14 @@ def remove_homepage_from_domains(guides,domains):
     pbar.finish()
 
     return error
+
+def get_in(obj, *keys):
+    for k in keys:
+        v = obj.get(k, None)
+        if not v:
+            return None
+        obj = v
+    return obj
 
 def unquote(uri):
     """
