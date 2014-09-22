@@ -179,7 +179,8 @@ def main():
             'attraction-remove',
             'remove-street-pic',
             'city-name-translation',
-            'reversegeo'
+            'reversegeo',
+            'iata'
             )
 
     parser.add_argument(
@@ -293,6 +294,10 @@ def publish(path,
                                      nailgun_bin,
                                      description_gen)
 
+    if 'reversegeo' in publish_functions:
+        logging.info('starting reverse geocoding of places')
+        error |= add_parse_address(guides)
+
     if 'attraction-remove' in publish_functions:
         logging.info('starting attraction remove')
         error |= filter_poi(guides, must_remove_attraction)
@@ -333,6 +338,10 @@ def publish(path,
     if 'city-name-translation' in publish_functions:
         logging.info('starting alternate city name translation')
         error |= city_name_translation(dbconf,guides)
+
+    if 'iata' in publish_functions:
+        logging.info('starting iata code fetching')
+        error |= iata_codes(dbconf, guides)
 
     if 'editorial' in publish_functions:
         logging.info('starting editorial content generation')
@@ -384,6 +393,69 @@ def guide_id(guide_path):
 
     return city_id
 
+def iata_codes(conf, guides):
+
+    # read the database configuration.
+    db_conf = None
+    with open(conf,'r') as db:
+        db_conf = json.load(db)
+
+    if not db_conf:
+        logging.error('could not load the database configuration for iata_codes')
+        return True
+
+    host = None
+    user = None
+    password = None
+    dbname = None
+    try:
+        alt_name = db_conf.get('iata-codes',None)
+        host = alt_name.get('host',None)
+        user = alt_name.get('user',None)
+        password = alt_name.get('password',None)
+        dbname = alt_name.get('dbname',None)
+    except:
+        logging.error('could not retrieve complete information from the db conf file')
+        return True
+
+    # prepare the database connection.
+    connection = None
+    try:
+        connection = psycopg2.connect(
+                host=host,
+                user=user,
+                password=password,
+                dbname=dbname)
+    except:
+        logging.error('could not establish connection to the db. Is the provided info in the db credential file correct?')
+        return True
+
+    query_template = "select * from iata(%s,%s,%s,%s)"
+
+    for guide in guides:
+
+        content = guide_content(guide)
+        (top, left, bottom, right) = content['Cities'][0]['bounding_box']
+
+        cur = connection.cursor()
+        cur.execute(query_template, (top,right, bottom, left))
+
+        code =  cur.fetchone()
+
+
+
+        try:
+            content['Cities'][0]['iata'] = code[0]
+        except:
+            content['Cities'][0]['iata'] = None
+
+        # dump the new content in the file
+        with open(guide,'w') as g:
+            json.dump(content, g)
+
+    return False
+
+
 def city_name_translation(conf, guides):
 
     # read the database configuration.
@@ -395,10 +467,19 @@ def city_name_translation(conf, guides):
         logging.error('could not load the database configuration for city-name-translation')
         return True
 
-    host = db_conf.get('host',None)
-    user = db_conf.get('user',None)
-    password = db_conf.get('password',None)
-    dbname = db_conf.get('dbname',None)
+    host = None
+    user = None
+    password = None
+    dbname = None
+    try:
+        alt_name = db_conf.get('alternate-names',None)
+        host = alt_name.get('host',None)
+        user = alt_name.get('user',None)
+        password = alt_name.get('password',None)
+        dbname = alt_name.get('dbname',None)
+    except:
+        logging.error('could not retrieve complete information from the db conf file')
+        return True
 
     # prepare the database connection.
     connection = None
@@ -970,22 +1051,23 @@ def add_parse_address(guides):
                 latitude = get_in(p, "location", "latitude")
                 longitude = get_in(p, "location", "longitude")
 
-                coords = ", ".join[latitude,longitude]
-                parsed = reversegeo.reverse_geocode(coords)
                 try:
+                    coords = ", ".join([str(latitude),str(longitude)])
+                    parsed = reversegeo.reverse_geocode(coords)
                     p['address']['parsed'] = parsed
                 except:
+                    Error=True
                     logging.error('could not add parsed address to a poi ...')
 
             # reserialize the content.
             with open(guide, 'w') as file_guide:
                 json.dump(content,file_guide)
 
-            #remove_from_zip(guide, removed_pic_name)
 
         bar.next()
 
     bar.finish()
+    return Error
 
 
 
